@@ -1109,7 +1109,7 @@ class NotePicker extends SuggestModal<NotePick> {
   }
 
   private omnisearch(): Omnisearch | undefined {
-    const o = (globalThis as { omnisearch?: Omnisearch }).omnisearch;
+    const o = (window as { omnisearch?: Omnisearch }).omnisearch;
     return typeof o?.search === "function" ? o : undefined;
   }
 

@@ -1,7 +1,6 @@
 /** Leeches: cards forgotten again and again, each with a way out (rewrite, crowns, retry, drop). */
 import { Component, ItemView, MarkdownRenderer, Notice, type WorkspaceLeaf } from "obsidian";
 import { cardFaces } from "../../core/faces";
-import { findLeeches } from "../../core/leeches";
 import type { QueueItem } from "../../core/queue";
 import type FlashcardsPlugin from "../../main";
 import { EditCardModal } from "../modals/card";

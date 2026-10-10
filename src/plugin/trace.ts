@@ -3,7 +3,7 @@
  * exists in the plugin folder. Records steps, errors and main-thread stalls, and writes them to
  * `trace-<device>-<time>.txt` in the plugin folder after every step, so the file syncs to another device.
  */
-import type { App } from "obsidian";
+import { Platform, type App } from "obsidian";
 
 let on = false;
 let lines: string[] = [];
@@ -55,7 +55,7 @@ export async function startTrace(app: App, dir: string, device: string, version:
         if (dirty) writeNow();
       });
   };
-  trace(`trace on · v${version} · ${device} · ${new Date().toISOString()} · ${navigator.userAgent}`);
+  trace(`trace on · v${version} · ${device} · ${new Date().toISOString()} · ${Platform.isIosApp ? "iOS" : Platform.isAndroidApp ? "Android" : Platform.isMacOS ? "macOS" : Platform.isWin ? "Windows" : "Linux"}${Platform.isPhone ? " phone" : Platform.isTablet ? " tablet" : ""}`);
   const onError = (e: ErrorEvent) => trace(`ERROR ${e.message} @ ${e.filename}:${e.lineno}`);
   const onReject = (e: PromiseRejectionEvent) => trace(`REJECTED ${String(e.reason?.stack ?? e.reason)}`);
   // Every touch, and what it landed on: tells a blocked main thread (touches stop being logged)

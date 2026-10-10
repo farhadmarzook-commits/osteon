@@ -460,7 +460,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
           }),
         );
 
-    new Setting(containerEl).setName("Deck options").setHeading();
+    new Setting(containerEl).setName("Decks").setHeading();
     new Setting(containerEl)
       .setName("Presets")
       .setDesc(
@@ -772,7 +772,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
       .setName("Sync the key to my other devices")
       .setDesc(
         "Keeps a copy of the key in a file in this vault's plugin folder, so your phone or second computer picks it up without typing it. " +
-          "Anyone who gets a copy of the vault's hidden .obsidian folder gets the key too, so leave this off for a vault you share. Turning it off deletes the file.",
+          "Anyone who gets a copy of the vault's hidden settings folder gets the key too, so leave this off for a vault you share. Turning it off deletes the file.",
       )
       .addToggle((t) =>
         t.setValue(s.ai.syncKey).onChange(async (v) => {
@@ -850,7 +850,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
 export function applyCardTheme(app: App, root: HTMLElement, card: HTMLElement, s: FlashcardsSettings): void {
   for (const k of Object.keys(CARD_THEMES)) root.removeClass(`fc-theme-${k}`);
   root.addClass(`fc-theme-${s.cardTheme}`);
-  card.style.backgroundImage = "";
+  card.setCssStyles({ backgroundImage: "" });
   if (s.cardTheme !== "image" || !s.cardBackground) return;
   const file = app.metadataCache.getFirstLinkpathDest(s.cardBackground, "") ?? app.vault.getFileByPath(s.cardBackground);
   if (!file) return;

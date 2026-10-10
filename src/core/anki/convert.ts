@@ -68,7 +68,7 @@ function tagPart(s: string): string {
  * writes the file, so the link must use the same name or it points at nothing.
  */
 export function safeMediaName(s: string): string {
-  return s.replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/[  ]/g, " ").normalize("NFC");
+  return s.replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/[\u00a0\u202f]/g, " ").normalize("NFC");
 }
 
 /** Every media filename a note refers to (images and sounds). */

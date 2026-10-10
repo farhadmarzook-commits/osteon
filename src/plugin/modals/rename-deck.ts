@@ -40,7 +40,7 @@ export class RenameDeckModal extends Modal {
       .setDesc("Use :: to make it a sub-deck (Parent::Child). Your notes are not changed.")
       .addText((t) => {
         t.setValue(value).onChange((v) => (value = v));
-        t.inputEl.style.width = "100%";
+        t.inputEl.addClass("fc-input-wide");
         t.inputEl.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
             e.preventDefault();

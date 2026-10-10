@@ -221,8 +221,7 @@ export class DeckView extends ItemView {
     for (const def of this.plugin.settings.filteredDecks) {
       const c = counts(this.plugin.filteredQueueFor(def));
       const tr = body.createEl("tr", { cls: "fc-filtered-row" });
-      const nameCell = tr.createEl("td", { cls: "fc-deck-name" });
-      nameCell.style.paddingLeft = "0.4em";
+      const nameCell = tr.createEl("td", { cls: "fc-deck-name fc-deck-name-flat" });
       nameCell.createSpan({ cls: "fc-toggle" });
       const link = nameCell.createEl("a", { text: def.name, cls: "fc-deck-link fc-filtered-name", attr: { title: `Filtered deck: ${def.search}` } });
       link.onclick = () => void this.plugin.openFiltered(def.id);

@@ -209,6 +209,7 @@ export class ReviewView extends ItemView {
       row("New:", c.fresh, "fc-new");
       row("Learning:", c.learning, "fc-learn");
       row("To Review:", c.review, "fc-due");
+      if (q.newHeld) wrap.createEl("p", { cls: "fc-muted", text: this.heldNote(q) });
       const btn = wrap.createEl("button", { text: "Study Now", cls: "mod-cta fc-study-now" });
       btn.onclick = () => this.start();
       if (!fdef) {
@@ -505,7 +506,11 @@ export class ReviewView extends ItemView {
       const line = bottom.createDiv({ cls: "fc-remaining" });
       const part = (n: number, cls: string, active: boolean) =>
         line.createSpan({ text: String(n), cls: `${cls} ${active ? "fc-active" : ""}` });
-      part(c.fresh, "fc-new", which === "fresh");
+      if (q.newHeld) {
+        // Adaptive new cards is holding these back: show them as waiting, not as gone.
+        const held = line.createSpan({ text: `(${q.newHeld})`, cls: "fc-new fc-held" });
+        held.setAttr("aria-label", this.heldNote(q));
+      } else part(c.fresh, "fc-new", which === "fresh");
       line.appendText(" + ");
       part(c.learning, "fc-learn", which === "learning");
       line.appendText(" + ");
@@ -946,6 +951,13 @@ export class ReviewView extends ItemView {
    * N: the card's own note. For cards imported from Anki (their note is just card storage), its
    * linked study note (spec 0011), else the most specific related one, so N means "learn more".
    */
+  /** Why the new count reads as paused (Adaptive new cards). */
+  private heldNote(q: Queue): string {
+    const n = q.newHeld ?? 0;
+    const at = this.plugin.settings.adaptiveNewPile;
+    return `${n} new card${n === 1 ? "" : "s"} paused: ${q.pile ?? 0} cards answered today are still in learning. New cards come back at ${at} or fewer (Adaptive new cards, in settings).`;
+  }
+
   /** Pick a note to tie to this card; N opens it from then on and it leads the Related row. */
   private linkNote(): void {
     const ref = this.current?.ref;

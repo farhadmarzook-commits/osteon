@@ -431,3 +431,6 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
 /* Small layout helpers (kept as classes, not inline styles) */
 .fc-input-wide { width: 100%; }
 .fc-deck-name.fc-deck-name-flat { padding-left: 0.4em; }
+
+/* New cards held back by Adaptive new cards: shown as waiting */
+.fc-remaining .fc-held { opacity: 0.55; }

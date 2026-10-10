@@ -9,7 +9,7 @@ const DEVICE_KEY = "flashcards-device-id";
 
 /** A per-device ID, kept in Obsidian's vault-scoped local storage, which is never synced. */
 export function deviceId(app: App): string {
-  const saved = app.loadLocalStorage(DEVICE_KEY);
+  const saved: unknown = app.loadLocalStorage(DEVICE_KEY);
   if (typeof saved === "string" && /^[a-z]+-[a-z0-9]{4}$/.test(saved)) return saved;
   const kind = Platform.isIosApp ? (Platform.isTablet ? "ipad" : "iphone") : Platform.isAndroidApp ? "android" : Platform.isMacOS ? "mac" : "desktop";
   const bytes = new Uint8Array(4);

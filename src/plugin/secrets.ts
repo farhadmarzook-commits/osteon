@@ -16,7 +16,7 @@ function store(app: App): SecretStore | null {
 
 export function getSecret(app: App, id: string): string {
   const s = store(app);
-  const v = s ? s.getSecret(id) : app.loadLocalStorage(id);
+  const v: unknown = s ? s.getSecret(id) : app.loadLocalStorage(id);
   return typeof v === "string" ? v : "";
 }
 

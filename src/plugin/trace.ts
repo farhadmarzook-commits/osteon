@@ -57,7 +57,10 @@ export async function startTrace(app: App, dir: string, device: string, version:
   };
   trace(`trace on · v${version} · ${device} · ${new Date().toISOString()} · ${Platform.isIosApp ? "iOS" : Platform.isAndroidApp ? "Android" : Platform.isMacOS ? "macOS" : Platform.isWin ? "Windows" : "Linux"}${Platform.isPhone ? " phone" : Platform.isTablet ? " tablet" : ""}`);
   const onError = (e: ErrorEvent) => trace(`ERROR ${e.message} @ ${e.filename}:${e.lineno}`);
-  const onReject = (e: PromiseRejectionEvent) => trace(`REJECTED ${String(e.reason?.stack ?? e.reason)}`);
+  const onReject = (e: PromiseRejectionEvent) => {
+    const r: unknown = e.reason;
+    trace(`REJECTED ${r instanceof Error ? (r.stack ?? r.message) : String(r)}`);
+  };
   // Every touch, and what it landed on: tells a blocked main thread (touches stop being logged)
   // from something lying over the card (touches logged, but on the wrong element).
   const describe = (n: EventTarget | null) => {

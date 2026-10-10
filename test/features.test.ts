@@ -323,6 +323,7 @@ describe("& lists: a first piece with its own aside stands alone", () => {
 
 describe("download check (0.21.0)", () => {
   it("counts reads that fail or never finish as missing, without waiting on them", async () => {
+    (globalThis as { window?: unknown }).window ??= globalThis; // the plugin uses window timers
     const { probeDownloads, samplePaths } = await import("../src/plugin/downloads");
     const read = (p: string) => (p === "ok.png" ? Promise.resolve(new ArrayBuffer(1)) : p === "gone.png" ? Promise.reject(new Error("x")) : new Promise(() => undefined));
     const t0 = Date.now();

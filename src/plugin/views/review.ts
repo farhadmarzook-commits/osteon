@@ -7,6 +7,7 @@ import { RATINGS, type RatingName } from "../../core/log";
 import { counts, nextCard, whichCount, type Queue, type QueueItem } from "../../core/queue";
 import { formatInterval, newCard, previewDue } from "../../core/scheduler";
 import type FlashcardsPlugin from "../../main";
+import type { ReviewContext } from "../api";
 import { masksForSlot } from "../../core/occlusion";
 import { excerptLine, searchNotes, type SearchableNote } from "../../core/note-search";
 import { imageEmbeds } from "../../core/parser";
@@ -484,7 +485,7 @@ export class ReviewView extends ItemView {
     const renderedFor = this.current;
     void Promise.allSettled(this.pendingRenders).then(() => {
       if (this.current !== renderedFor || !card.isConnected) return;
-      const ctx = { ref, state: item.state, side: side as "front" | "back", el: card };
+      const ctx: ReviewContext = { ref, state: item.state, side, el: card };
       timed("decorate", () => this.plugin.api.decorate(ctx));
       this.plugin.api.emit(side === "back" ? "answerShown" : "cardShown", ctx);
     });

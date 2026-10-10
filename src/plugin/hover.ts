@@ -26,7 +26,7 @@ function openDb(name: string): Promise<IDBDatabase> {
     const req = indexedDB.open(name, 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error ?? new Error("The term dictionary could not be opened."));
   });
 }
 
@@ -37,7 +37,7 @@ async function idbGet<T>(db: string, key: string): Promise<T | undefined> {
       const tx = d.transaction("kv", "readonly");
       const req = tx.objectStore("kv").get(key);
       req.onsuccess = () => resolve(req.result as T | undefined);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => reject(req.error ?? new Error("The term dictionary could not be opened."));
       tx.onabort = () => reject(tx.error ?? new Error("IndexedDB read aborted"));
     });
   } finally {
@@ -52,7 +52,7 @@ async function idbSet(db: string, key: string, value: unknown): Promise<void> {
       const tx = d.transaction("kv", "readwrite");
       tx.objectStore("kv").put(value, key);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error ?? new Error("The term dictionary could not be saved."));
       // A quota failure aborts without an error event.
       tx.onabort = () => reject(tx.error ?? new Error("IndexedDB write aborted (storage full?)"));
     });
@@ -183,7 +183,7 @@ export class TermService {
 
   private aliasesOf(f: TFile): string[] {
     const fm = this.plugin.app.metadataCache.getFileCache(f)?.frontmatter;
-    const raw = fm?.aliases ?? fm?.alias;
+    const raw: unknown = fm?.aliases ?? fm?.alias;
     return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : typeof raw === "string" ? [raw] : [];
   }
 
@@ -308,11 +308,11 @@ export class TermService {
       const text = node.nodeValue ?? "";
       const matches = findTerms(text, layers, already);
       if (!matches.length) continue;
-      const frag = document.createDocumentFragment();
+      const frag = createFragment();
       let pos = 0;
       for (const m of matches) {
         frag.append(text.slice(pos, m.start));
-        const span = document.createElement("span");
+        const span = createSpan();
         span.className = "fc-term";
         span.textContent = text.slice(m.start, m.end);
         this.attach(span, m.entry, sourcePath);
@@ -392,7 +392,7 @@ export class TermService {
         body.createDiv({ text: summary.definition || "(This note has no text paragraph yet.)" });
         if (summary.images.length) {
           const imgs = body.createDiv({ cls: "fc-term-images markdown-rendered" });
-          await MarkdownRenderer.render(this.plugin.app, summary.images.join("\n\n"), imgs, file.path, this.popupComponent!);
+          await MarkdownRenderer.render(this.plugin.app, summary.images.join("\n\n"), imgs, file.path, this.popupComponent);
           if (this.popup !== pop) return;
         }
         const open = pop.createEl("a", { cls: "fc-term-open", text: "Open note →", href: "#" });

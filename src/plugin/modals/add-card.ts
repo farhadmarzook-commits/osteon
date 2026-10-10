@@ -60,7 +60,7 @@ export class AddCardModal extends Modal {
     });
 
     const notes = this.notesIn(this.deck);
-    const last = this.app.loadLocalStorage(LAST_NOTE_KEY);
+    const last: unknown = this.app.loadLocalStorage(LAST_NOTE_KEY);
     if (!this.notePath) this.notePath = typeof last === "string" && notes.includes(last) ? last : notes[0] ?? NEW_NOTE;
     new Setting(contentEl).setName("Note").addDropdown((d) => {
       for (const p of notes) d.addOption(p, p.replace(/\.md$/, ""));

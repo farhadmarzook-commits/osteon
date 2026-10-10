@@ -21,14 +21,14 @@ export async function probeDownloads(read: (path: string) => Promise<unknown>, p
     paths.map(
       (p) =>
         new Promise<boolean>((resolve) => {
-          const timer = setTimeout(() => resolve(false), timeoutMs);
+          const timer = window.setTimeout(() => resolve(false), timeoutMs);
           read(p).then(
             () => {
-              clearTimeout(timer);
+              window.clearTimeout(timer);
               resolve(true);
             },
             () => {
-              clearTimeout(timer);
+              window.clearTimeout(timer);
               resolve(false);
             },
           );

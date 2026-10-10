@@ -140,7 +140,7 @@ export function buildQueue(
     if (o.bury && siblingAnswered(item)) {
       const isNew = !s || s.card.state === State.New;
       const isLearn = !!s && (s.card.state === State.Learning || s.card.state === State.Relearning) && !isIntraday(s);
-      if ((isNew && o.bury.newSiblings) || (isLearn && o.bury.learningSiblings) || (!isNew && !isLearn && s!.card.state === State.Review && o.bury.reviewSiblings)) continue;
+      if ((isNew && o.bury.newSiblings) || (isLearn && o.bury.learningSiblings) || (!isNew && !isLearn && s.card.state === State.Review && o.bury.reviewSiblings)) continue;
     }
     if (!s || s.card.state === State.New) {
       fresh.push(item);

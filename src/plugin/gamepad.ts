@@ -40,7 +40,7 @@ export class GamepadService {
     const p = this.plugin;
     p.registerDomEvent(window, "gamepadconnected", (e) => {
       if (!p.settings.gamepad.enabled) return;
-      new Notice(`Controller connected: ${(e as GamepadEvent).gamepad.id.replace(/\s*\(.*$/, "")}`);
+      new Notice(`Controller connected: ${(e).gamepad.id.replace(/\s*\(.*$/, "")}`);
       this.loop();
     });
     p.registerDomEvent(window, "gamepaddisconnected", () => {
@@ -78,10 +78,10 @@ export class GamepadService {
   }
 
   /** Buttons pressed while the settings' "Press a button" tester is open go there instead. */
-  listener: ((button: number) => void) | null = null;
+  listener: ((button: number) => void | Promise<void>) | null = null;
 
   private press(button: number): void {
-    if (this.listener) return this.listener(button);
+    if (this.listener) return void this.listener(button);
     if (document.querySelector(".modal-container")) return; // don't act behind a dialog
     const { workspace } = this.plugin.app;
     const leaf = workspace.getMostRecentLeaf();
@@ -110,7 +110,7 @@ export class GamepadService {
     }
     if (a === "study") return this.key(view, "showAnswer"); // on the overview: Study Now
     if (a === "stats") return void this.plugin.openStats(null);
-    this.key(view, a as ActionName);
+    this.key(view, a);
   }
 
   private runDecks(a: PadAction): void {

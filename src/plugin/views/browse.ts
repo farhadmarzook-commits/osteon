@@ -169,11 +169,11 @@ export class BrowseView extends ItemView {
       tr.createEl("td", { text: plain(faces.question).slice(0, 120), cls: "fc-browse-front" });
       tr.createEl("td", { text: ref.deck.split("/").pop() ?? "", cls: "fc-muted" });
       tr.createEl("td", {
-        text: isNew ? "New" : state?.suspended ? "Suspended" : c!.due.getTime() <= now ? "Due" : formatInterval(c!.due.getTime() - now),
+        text: isNew ? "New" : state?.suspended ? "Suspended" : c.due.getTime() <= now ? "Due" : formatInterval(c.due.getTime() - now),
       });
-      tr.createEl("td", { text: isNew ? "" : formatInterval(c!.scheduled_days * 86400000 || c!.due.getTime() - (c!.last_review?.getTime() ?? now)) });
-      tr.createEl("td", { text: isNew ? "" : `${Math.round(c!.difficulty * 10)}%` });
-      tr.createEl("td", { text: isNew ? "" : String(c!.lapses) });
+      tr.createEl("td", { text: isNew ? "" : formatInterval(c.scheduled_days * 86400000 || c.due.getTime() - (c.last_review?.getTime() ?? now)) });
+      tr.createEl("td", { text: isNew ? "" : `${Math.round(c.difficulty * 10)}%` });
+      tr.createEl("td", { text: isNew ? "" : String(c.lapses) });
       tr.onclick = () => {
         this.previewUid = ref.uid;
         this.renderList();

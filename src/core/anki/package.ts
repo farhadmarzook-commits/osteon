@@ -231,7 +231,7 @@ export function readApkg(bytes: Uint8Array, SQL: SqlJsStatic): AnkiCollection {
     const col = readCollection(db);
     return {
       ...col,
-      mediaIndex: entries.media ? parseMediaMap(entries.media) : new Map(),
+      mediaIndex: entries.media ? parseMediaMap(entries.media) : new Map<string, string>(),
       format: colName === "collection.anki21b" ? "anki21b" : "legacy",
     };
   } finally {

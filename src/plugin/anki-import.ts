@@ -25,7 +25,7 @@ const MANIFEST_HEADER = "# Imported Anki notes (GUID → card ID) · do not edit
 
 /** Ask for an .apkg file, then show the preview. */
 export function pickAndImportApkg(plugin: FlashcardsPlugin): void {
-  const input = document.createElement("input");
+  const input = createEl("input");
   input.type = "file";
   // iOS greys out file types it doesn't know, so there the extension is checked after picking.
   if (!Platform.isIosApp) input.accept = ".apkg,.colpkg";
@@ -160,7 +160,7 @@ class ApkgImportModal extends Modal {
     fact(reviewed ? `Review history for ${reviewed.toLocaleString()} cards` : "No review history (cards start as new)");
     if (already) fact(`${already.toLocaleString()} notes were imported before`);
     const decks = contentEl.createDiv({ cls: "fc-import-decks" });
-    decks.createEl("div", { text: "Decks:", cls: "fc-muted" });
+    decks.createDiv({ text: "Decks:", cls: "fc-muted" });
     const ul = decks.createEl("ul");
     for (const [d, c] of [...deckCounts].sort((a, b) => a[0].localeCompare(b[0])).slice(0, 30)) ul.createEl("li", { text: `${d.split("::").join(" › ")} (${c})` });
     if (deckCounts.size > 30) decks.createDiv({ cls: "fc-muted", text: `…and ${deckCounts.size - 30} more` });
@@ -214,7 +214,7 @@ class ApkgImportModal extends Modal {
       const id = ref.card.id;
       if (!id || !byId.has(id)) continue;
       let m = byFile.get(ref.path);
-      if (!m) byFile.set(ref.path, (m = new Map()));
+      if (!m) byFile.set(ref.path, (m = new Map<string, string[]>()));
       m.set(id, byId.get(id)!);
     }
     let changed = 0;

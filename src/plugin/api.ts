@@ -97,7 +97,7 @@ export class FlashcardsApi {
 
   private act(e: { type: "suspend" | "unsuspend" | "bury" | "reset"; key: string } | { type: "flag"; key: string; flag: number } | { type: "reschedule"; key: string; due: string }): Promise<void> {
     if (!/^[a-z0-9]{8}\.[a-z0-9]+$/.test(e.key)) return Promise.reject(new Error(`Not a card key: ${e.key}`));
-    return this.plugin.logEvent({ ...e, ts: new Date().toISOString() } as Parameters<FlashcardsPlugin["logEvent"]>[0]);
+    return this.plugin.logEvent({ ...e, ts: new Date().toISOString() });
   }
 
   decorate(ctx: ReviewContext): void {

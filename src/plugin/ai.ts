@@ -192,7 +192,7 @@ export class AiService {
     let res;
     try {
       res = await this.client().beta.messages.parse({
-        ...(rest as { model: string }),
+        ...(rest),
         max_tokens: 8000,
         system,
         messages: [{ role: "user", content: user }],
@@ -208,7 +208,7 @@ export class AiService {
     if (res.stop_reason === "refusal") throw new Error("The model declined this request.");
     if (res.stop_reason === "max_tokens") throw new Error("The reply was cut off (too long).");
     if (!res.parsed_output) throw new Error("The reply couldn't be read.");
-    return res.parsed_output as T;
+    return res.parsed_output;
   }
 
   // ---- the glossary files ---------------------------------------------------------------------

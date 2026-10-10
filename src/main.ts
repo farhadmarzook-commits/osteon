@@ -130,7 +130,7 @@ export default class FlashcardsPlugin extends Plugin {
   async onload(): Promise<void> {
     await startTrace(this.app, this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`, deviceId(this.app), this.manifest.version, (cb) => this.register(cb));
     trace("onload");
-    this.settings = mergeSettings(await this.loadData());
+    this.settings = mergeSettings((await this.loadData()) as Record<string, unknown> | null);
     this.makeSchedulers();
     this.state = new ReviewState(this.replayOptions());
     this.logs = new LogStore(this.app, () => this.settings.stateFolder, deviceId(this.app), this.manifest.version);

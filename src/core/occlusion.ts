@@ -79,7 +79,7 @@ export function parseOcclusion(source: string): Occlusion {
 function parseLabel(s: string | undefined): string | undefined {
   if (!s) return undefined;
   try {
-    const v = JSON.parse(s);
+    const v: unknown = JSON.parse(s);
     return typeof v === "string" && v ? v : undefined;
   } catch {
     return undefined;

@@ -227,7 +227,7 @@ export function mergeSettings(saved: Record<string, unknown> | null): Flashcards
       ...(s.queue?.newPerDay !== undefined ? { newPerDay: s.queue.newPerDay } : {}),
       ...(s.queue?.reviewsPerDay !== undefined ? { reviewsPerDay: s.queue.reviewsPerDay } : {}),
       ...(s.scheduler ? { scheduler: s.scheduler } : {}),
-    } as Preset);
+    });
   }
   const out: FlashcardsSettings = {
     ...DEFAULT_SETTINGS,
@@ -249,7 +249,7 @@ export function mergeSettings(saved: Record<string, unknown> | null): Flashcards
     crownOverrides: s.crownOverrides ?? {},
     leechDone: s.leechDone ?? {},
     filteredDecks: Array.isArray(s.filteredDecks) ? s.filteredDecks : [],
-    cardNotes: s.cardNotes && typeof s.cardNotes === "object" ? (s.cardNotes as Record<string, string[]>) : {},
+    cardNotes: s.cardNotes && typeof s.cardNotes === "object" ? (s.cardNotes) : {},
     deckRenames: Array.isArray(s.deckRenames)
       ? s.deckRenames.filter((r): r is DeckRename => !!r && typeof r.from === "string" && typeof r.to === "string" && !!r.from && !!r.to)
       : [],
@@ -277,6 +277,11 @@ export function mergeSettings(saved: Record<string, unknown> | null): Flashcards
 }
 
 /** U joined Cmd/Ctrl+Z as Undo in 0.19.0; settings saved before then still say just Mod+z. */
+/** Run an async handler when a text box is changed, without handing the event system a promise. */
+function onChange(el: HTMLElement, fn: () => Promise<void>): void {
+  el.addEventListener("change", () => void fn());
+}
+
 function withUndoU(keys: Record<ActionName, string[]>): Record<ActionName, string[]> {
   if (keys.undo.length === 1 && keys.undo[0] === "Mod+z") keys.undo = ["Mod+z", "u"];
   return keys;
@@ -478,7 +483,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
       .setDesc("Notes tagged #flashcards are always scanned. Also scan every note in these folders (comma-separated).")
       .addText((t) => {
         t.setValue(s.cardFolders.join(", "));
-        t.inputEl.addEventListener("change", async () => {
+        onChange(t.inputEl, async () => {
           s.cardFolders = t.getValue().split(",").map((x) => x.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean);
           await this.plugin.applyFolderSettings();
         });
@@ -491,7 +496,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
       )
       .addText((t) => {
         t.setValue(s.stateFolder);
-        t.inputEl.addEventListener("change", async () => {
+        onChange(t.inputEl, async () => {
           const folder = t.getValue().trim().replace(/^\/+|\/+$/g, "");
           if (!folder || folder.startsWith(".")) {
             new Notice("The review data folder can't be empty or start with a dot.");
@@ -746,7 +751,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
         .setDesc("The base address of the service, e.g. http://localhost:11434/v1 for Ollama.")
         .addText((t) => {
           t.setPlaceholder("https://…/v1").setValue(s.ai.baseUrl);
-          t.inputEl.addEventListener("change", async () => {
+          onChange(t.inputEl, async () => {
             s.ai.baseUrl = t.getValue().trim();
             await save();
           });
@@ -812,7 +817,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
         )
         .addText((t) => {
           t.setPlaceholder("model name").setValue(s.ai.otherModel);
-          t.inputEl.addEventListener("change", async () => {
+          onChange(t.inputEl, async () => {
             s.ai.otherModel = t.getValue().trim();
             await save();
           });
@@ -823,7 +828,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
       .setDesc("Comma-separated.")
       .addText((t) => {
         t.setValue(s.ai.excludeFolders.join(", "));
-        t.inputEl.addEventListener("change", async () => {
+        onChange(t.inputEl, async () => {
           s.ai.excludeFolders = t.getValue().split(",").map((x) => x.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean);
           await save();
         });

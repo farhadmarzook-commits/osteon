@@ -48,7 +48,7 @@ export class DeckView extends ItemView {
       else return true;
       return false;
     });
-    const saved = this.app.loadLocalStorage(DeckView.COLLAPSED_KEY);
+    const saved: unknown = this.app.loadLocalStorage(DeckView.COLLAPSED_KEY);
     if (Array.isArray(saved)) for (const d of saved) if (typeof d === "string") this.collapsed.add(d.toLowerCase());
   }
 

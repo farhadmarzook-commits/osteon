@@ -3,7 +3,7 @@
  * select/move/resize them, group, label, undo/redo, zoom. Mouse, touch and Apple Pencil all go
  * through Pointer Events.
  */
-import { App, Modal, Notice, Platform, setIcon } from "obsidian";
+import { App, Modal, Notice, Platform, setIcon, Setting } from "obsidian";
 import { newMaskId, type Mask, type Occlusion } from "../../core/occlusion";
 import { createSvg, resolveImage, shapeEl } from "../occlusion-render";
 
@@ -94,9 +94,13 @@ export class OcclusionEditorModal extends Modal {
 
   /** Escape, the ✕ and the backdrop all come here: don't lose a masking session silently. */
   close(): void {
-    if (this.dirty && !confirm("Discard your changes to this figure?")) return;
-    super.close();
+    if (!this.dirty || this.discard) return super.close();
+    new DiscardModal(this.app, () => {
+      this.discard = true;
+      super.close();
+    }).open();
   }
+  private discard = false;
 
   // ---- state helpers -----------------------------------------------------------------
 
@@ -503,7 +507,7 @@ export class OcclusionEditorModal extends Modal {
       svg.appendChild(el);
     }
     if (this.polyPoints.length) {
-      const pl = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      const pl = window.createSvg("polyline");
       pl.setAttribute("points", this.polyPoints.map((p) => `${p.x},${p.y}`).join(" "));
       pl.setAttribute("vector-effect", "non-scaling-stroke");
       pl.classList.add("fc-ioe-shape", "is-draft");
@@ -527,7 +531,7 @@ export class OcclusionEditorModal extends Modal {
         const rx = r.width ? 11 / r.width : 0.015;
         const ry = r.height ? 11 / r.height : 0.015;
         pts.forEach((p, i) => {
-          const h = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+          const h = window.createSvg("ellipse");
           h.setAttribute("cx", String(p.x));
           h.setAttribute("cy", String(p.y));
           h.setAttribute("rx", String(rx));
@@ -540,5 +544,31 @@ export class OcclusionEditorModal extends Modal {
       }
     }
     this.renderSidebar();
+  }
+}
+
+/** Asks before a figure's unsaved boxes are thrown away. */
+class DiscardModal extends Modal {
+  constructor(
+    app: App,
+    private onDiscard: () => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.setTitle("Discard your changes to this figure?");
+    new Setting(this.contentEl)
+      .addButton((b) => b.setButtonText("Keep editing").onClick(() => this.close()))
+      .addButton((b) =>
+        b.setButtonText("Discard").setClass("mod-warning").onClick(() => {
+          this.close();
+          this.onDiscard();
+        }),
+      );
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }

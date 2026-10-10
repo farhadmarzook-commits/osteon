@@ -48,9 +48,10 @@ export function linesFromBatch(
   for (const r of results) {
     const hashes = cardsByRequest[r.customId];
     if (!hashes) continue;
-    let parsed: { cards?: Array<{ terms?: Array<{ term?: string; definition?: string }> }> } | null = null;
+    type Reply = { cards?: Array<{ terms?: Array<{ term?: string; definition?: string }> }> } | null;
+    let parsed: Reply = null;
     try {
-      parsed = r.json ? JSON.parse(r.json) : null;
+      parsed = r.json ? (JSON.parse(r.json) as Reply) : null;
     } catch {
       parsed = null;
     }

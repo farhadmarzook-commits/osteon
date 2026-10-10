@@ -1,0 +1,41 @@
+*NEWRECORD
+RECTYPE = D
+MH = Median Nerve
+AQ = AB BS
+ENTRY = Nerve, Median|T023|NON|EQV|NLM (1966)|990101|abcdef
+ENTRY = Median Nerves
+MN = A08.800.800.720.450
+MS = A major nerve of the upper extremity. In humans, the fibers of the median nerve originate in the lower cervical and upper thoracic spinal cord.
+UI = D008475
+
+*NEWRECORD
+RECTYPE = D
+MH = Arthritis, Rheumatoid
+ENTRY = Rheumatoid Arthritis
+MN = C05.550.114.154
+MN = C20.111.199
+MS = A chronic systemic disease, primarily of the joints, marked by inflammatory changes in the synovial membranes.
+UI = D001172
+
+*NEWRECORD
+RECTYPE = D
+MH = Hand
+MN = A01.378.800.667.430
+MS = The distal part of the arm beyond the wrist in humans and primates.
+UI = D006225
+
+*NEWRECORD
+RECTYPE = D
+MH = Geography
+MN = Z01.000
+MS = The science dealing with the earth.
+UI = D005843
+
+*NEWRECORD
+RECTYPE = D
+MH = Scaphoid Bone
+ENTRY = Navicular Bone of Hand
+ENTRY = Scaphoid
+MN = A02.835.232.834.151.213.700
+MS = The largest and most lateral of the proximal carpal bones.
+UI = D021941

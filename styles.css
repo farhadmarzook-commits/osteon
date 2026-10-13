@@ -186,7 +186,8 @@ button.fc-answer-btn.fc-answer-btn { height: auto; }
 .is-mobile .fc-ioe-modal, .is-phone .fc-ioe-modal { width: 100vw; height: 100vh; max-width: 100vw; }
 
 /* Term hover (spec 0005) */
-.fc-term { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--text-accent); text-underline-offset: 3px; cursor: help; }
+/* a dotted border, not text-decoration-style: the directory's CSS check targets an older Chromium */
+.fc-term { border-bottom: 1px dotted var(--text-accent); cursor: help; }
 .fc-term-popup { position: fixed; z-index: var(--layer-popover); background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 8px; box-shadow: var(--shadow-s); padding: 0.6em 0.8em; font-size: var(--font-ui-small); line-height: 1.45; max-height: 60vh; overflow-y: auto; text-align: left; }
 .fc-term-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6em; margin-bottom: 0.3em; }
 .fc-term-title { font-weight: 700; }

@@ -1,6 +1,6 @@
 {
   "name": "osteon",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Anki-style flashcards inside Obsidian: notes and cards in one place, FSRS scheduling, real card backs.",
   "main": "main.js",
   "private": true,

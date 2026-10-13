@@ -29,6 +29,16 @@
 .fc-overview-counts { margin: 1em auto; }
 .fc-overview-counts td { padding: 0.2em 0.6em; text-align: left; }
 .fc-study-now { font-size: 1.1em; padding: 0.6em 2em; margin: 1em 0; }
+/* The overview's counts as switches: a kind that is off is left out of the session. */
+.fc-kinds { display: flex; flex-direction: column; gap: 0.3em; width: 15em; max-width: 100%; margin: 1em auto 0.4em; }
+.fc-kind { display: flex; align-items: center; gap: 0.6em; width: 100%; height: auto; min-height: 2.2em; padding: 0.3em 0.8em; text-align: left; }
+.is-mobile .fc-kind { min-height: 44px; }
+.fc-kind-check { display: flex; color: var(--text-muted); }
+.fc-kind-label { flex: 1; }
+.fc-kind .fc-num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fc-kind-off .fc-kind-label { text-decoration: line-through; color: var(--text-faint); }
+.fc-kind-off .fc-num { opacity: 0.35; }
+.fc-kinds-note { font-size: var(--font-ui-small); margin: 0 0 0.4em; }
 .fc-back-to-decks { display: block; margin: 1em auto; }
 .fc-congrats { font-size: 1.15em; margin: 2em 0 0.5em; }
 

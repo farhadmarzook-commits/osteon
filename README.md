@@ -150,6 +150,8 @@ can be renamed or hidden from the same menu.
 - **Custom Study** (C on a deck): raise today's limits, review forgotten cards, review ahead,
   preview new cards, or study by state or tag.
 - **Filtered decks** (F): a saved search with a limit and order, with Rebuild and Empty.
+- **Pick which cards to study:** on a deck's overview, switch New, Learning or To review off
+  (or press 1, 2 or 3) to leave that kind out of the session. The cards left out keep their schedule.
 - **Timed sittings:** 5, 10, 15 or 20 minutes from a deck's overview.
 - **Pacing (optional):** hold back new cards while many are still in learning, and rest a card
   after several misses in one day.

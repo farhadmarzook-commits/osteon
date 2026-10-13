@@ -4,7 +4,7 @@ import { Component, ItemView, MarkdownRenderer, MarkdownView, Menu, Notice, Plat
 import type { CardRef } from "../../core/collection";
 import { cardFaces } from "../../core/faces";
 import { RATINGS, type RatingName } from "../../core/log";
-import { counts, nextCard, whichCount, type Queue, type QueueItem } from "../../core/queue";
+import { ALL_KINDS, counts, nextCard, restrictQueue, whichCount, type CardKind, type Queue, type QueueItem } from "../../core/queue";
 import { formatInterval, newCard, previewDue } from "../../core/scheduler";
 import type FlashcardsPlugin from "../../main";
 import type { ReviewContext } from "../api";
@@ -27,6 +27,12 @@ export const VIEW_REVIEW = "flashcards-review";
 type Phase = "overview" | "front" | "back" | "done";
 
 const LABEL: Record<RatingName, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
+/** The overview's three counts: label, the word used in a sentence, colour class. */
+const KINDS: Record<CardKind, { label: string; word: string; cls: string }> = {
+  fresh: { label: "New", word: "new", cls: "fc-new" },
+  learning: { label: "Learning", word: "learning", cls: "fc-learn" },
+  review: { label: "To review", word: "review", cls: "fc-due" },
+};
 
 export class ReviewView extends ItemView {
   private deck: string | null = null;
@@ -45,6 +51,11 @@ export class ReviewView extends ItemView {
   private until = 0;
   private timedMins = 0;
   private timeUp = false;
+  /**
+   * The kinds of card in this session (the overview's switches). Not saved: opening a deck starts
+   * with all three, so learning cards are never left out by a choice made days ago.
+   */
+  private kinds = new Set<CardKind>(ALL_KINDS);
   private cardComponent?: Component;
   private noteLeaf?: WorkspaceLeaf;
   private busy = false;
@@ -91,6 +102,7 @@ export class ReviewView extends ItemView {
     this.undoStack = [];
     this.until = 0;
     this.timeUp = false;
+    this.kinds = new Set(ALL_KINDS);
     trace(`setState deck=${this.deck}`);
     this.render();
     trace("setState rendered");
@@ -147,7 +159,25 @@ export class ReviewView extends ItemView {
       if (def.reschedule) return this.plugin.filteredQueueFor(def);
       return this.plugin.filteredQueueFor({ ...def, cards: this.previewOrder ?? def.cards }, this.previewDone);
     }
-    return this.plugin.queue(this.deck, new Date(), this.until > 0);
+    return restrictQueue(this.plugin.queue(this.deck, new Date(), this.until > 0), this.kinds);
+  }
+
+  /** Switch one kind of card on or off for the session about to start (at least one stays on). */
+  private toggleKind(kind: CardKind, refocus = false): void {
+    if (this.kinds.has(kind) && this.kinds.size === 1) {
+      new Notice("Keep at least one kind of card on.");
+      return;
+    }
+    if (this.kinds.has(kind)) this.kinds.delete(kind);
+    else this.kinds.add(kind);
+    this.render();
+    if (refocus) this.contentEl.querySelector<HTMLElement>(`.fc-kind[data-kind="${kind}"]`)?.focus();
+  }
+
+  /** "12 learning and 3 new": the cards of the kinds left out that are still waiting. */
+  private skippedText(q: Queue): string {
+    const parts = ALL_KINDS.filter((k) => q.skipped?.[k]).map((k) => `${q.skipped![k]} ${KINDS[k].word}`);
+    return parts.join(" and ");
   }
 
   private pickNext(): QueueItem | undefined {
@@ -179,6 +209,7 @@ export class ReviewView extends ItemView {
     if (fdef) wrap.createDiv({ cls: "fc-muted", text: `Filtered deck: ${fdef.search || "(all cards)"}${fdef.reschedule ? "" : " · preview, answers aren't recorded"}` });
     const q = this.queue();
     const c = counts(q);
+    const waiting = q.skipped ? q.skipped.fresh + q.skipped.learning + q.skipped.review : 0;
     if (this.phase === "done" && this.timeUp) {
       const left = c.fresh + c.learning + c.review;
       wrap.createEl("p", { cls: "fc-congrats", text: `Time's up: ${this.answered} card${this.answered === 1 ? "" : "s"} in ${this.timedMins} minutes.` });
@@ -191,15 +222,24 @@ export class ReviewView extends ItemView {
           this.start();
         };
       }
-    } else if (this.phase === "done" || (c.fresh + c.learning + c.review === 0 && !q.learning.length)) {
+    } else if (this.phase === "done" || c.fresh + c.learning + c.review + waiting === 0) {
       wrap.createEl("p", { cls: "fc-congrats", text: "Congratulations! You have finished this deck for now." });
+      if (waiting) {
+        // Only some kinds were in this session: say what was left out, and offer it.
+        wrap.createEl("p", { cls: "fc-muted", text: `Left out of this session and still waiting: ${this.skippedText(q)}.` });
+        const rest = wrap.createEl("button", { text: "Study the rest", cls: "fc-study-now" });
+        rest.onclick = () => {
+          this.kinds = new Set(ALL_KINDS);
+          this.start();
+        };
+      }
       if (q.nextLearningDue) {
         wrap.createEl("p", {
           cls: "fc-muted",
           text: `The next learning card will be ready in ${formatInterval(q.nextLearningDue.getTime() - Date.now())}.`,
         });
       }
-    } else {
+    } else if (fdef) {
       const table = wrap.createEl("table", { cls: "fc-overview-counts" });
       const row = (label: string, n: number, cls: string) => {
         const tr = table.createEl("tr");
@@ -209,23 +249,46 @@ export class ReviewView extends ItemView {
       row("New:", c.fresh, "fc-new");
       row("Learning:", c.learning, "fc-learn");
       row("To Review:", c.review, "fc-due");
+      const btn = wrap.createEl("button", { text: "Study Now", cls: "mod-cta fc-study-now" });
+      btn.onclick = () => this.start();
+    } else {
+      // The three counts are switches: one that is off is left out of the session about to start.
+      const list = wrap.createDiv({ cls: "fc-kinds" });
+      for (const kind of ALL_KINDS) {
+        const on = this.kinds.has(kind);
+        const { label, cls } = KINDS[kind];
+        const b = list.createEl("button", { cls: `fc-kind ${on ? "" : "fc-kind-off"}`, attr: { "data-kind": kind, "aria-pressed": String(on) } });
+        b.setAttr("aria-label", `${label}, ${c[kind] + (q.skipped?.[kind] ?? 0)}: ${on ? "in this session" : "left out of this session"}`);
+        setIcon(b.createSpan({ cls: "fc-kind-check" }), on ? "check-square" : "square");
+        b.createSpan({ cls: "fc-kind-label", text: label });
+        b.createSpan({ cls: `fc-num ${cls}`, text: String(c[kind] + (q.skipped?.[kind] ?? 0)) });
+        // A click made with the keyboard keeps the focus on the switch, so it can be pressed again.
+        b.onclick = (e) => this.toggleKind(kind, e.detail === 0);
+      }
+      const off = ALL_KINDS.filter((k) => !this.kinds.has(k));
+      wrap.createEl("p", {
+        cls: "fc-muted fc-kinds-note",
+        text: off.length
+          ? `Only ${ALL_KINDS.filter((k) => this.kinds.has(k)).map((k) => KINDS[k].word).join(" and ")} cards this session. The others keep their schedule.`
+          : Platform.isMobile
+            ? "Tap a kind to leave it out of this session."
+            : "Click a kind (or press 1, 2 or 3) to leave it out of this session.",
+      });
       if (q.newHeld) wrap.createEl("p", { cls: "fc-muted", text: this.heldNote(q) });
       const btn = wrap.createEl("button", { text: "Study Now", cls: "mod-cta fc-study-now" });
       btn.onclick = () => this.start();
-      if (!fdef) {
-        // A timed sitting: stops cleanly when the time is up, most at-risk cards first.
-        const timedRow = wrap.createDiv({ cls: "fc-timed" });
-        timedRow.createSpan({ cls: "fc-muted", text: "Timed sitting: " });
-        for (const mins of [5, 10, 15, 20]) {
-          const b = timedRow.createEl("button", { text: `${mins} min` });
-          b.onclick = () => {
-            this.until = Date.now() + mins * 60000;
-            this.timedMins = mins;
-            this.timeUp = false;
-            this.answered = 0;
-            this.start();
-          };
-        }
+      // A timed sitting: stops cleanly when the time is up, most at-risk cards first.
+      const timedRow = wrap.createDiv({ cls: "fc-timed" });
+      timedRow.createSpan({ cls: "fc-muted", text: "Timed sitting: " });
+      for (const mins of [5, 10, 15, 20]) {
+        const b = timedRow.createEl("button", { text: `${mins} min` });
+        b.onclick = () => {
+          this.until = Date.now() + mins * 60000;
+          this.timedMins = mins;
+          this.timeUp = false;
+          this.answered = 0;
+          this.start();
+        };
       }
     }
     const nav = wrap.createDiv({ cls: "fc-deck-buttons" });
@@ -504,17 +567,23 @@ export class ReviewView extends ItemView {
       const c = counts(q);
       const which = whichCount(item);
       const line = bottom.createDiv({ cls: "fc-remaining" });
-      const part = (n: number, cls: string, active: boolean) =>
-        line.createSpan({ text: String(n), cls: `${cls} ${active ? "fc-active" : ""}` });
+      const part = (n: number, cls: string, active: boolean, kind: CardKind) => {
+        const span = line.createSpan({ text: String(n), cls: `${cls} ${active ? "fc-active" : ""}` });
+        // A kind left out of this session: dimmed, so its 0 doesn't read as "none waiting".
+        if (!this.filtered && !this.kinds.has(kind) && !active) {
+          span.addClass("fc-zero");
+          span.setAttr("aria-label", "Left out of this session");
+        }
+      };
       if (q.newHeld) {
         // Adaptive new cards is holding these back: show them as waiting, not as gone.
         const held = line.createSpan({ text: `(${q.newHeld})`, cls: "fc-new fc-held" });
         held.setAttr("aria-label", this.heldNote(q));
-      } else part(c.fresh, "fc-new", which === "fresh");
+      } else part(c.fresh, "fc-new", which === "fresh", "fresh");
       line.appendText(" + ");
-      part(c.learning, "fc-learn", which === "learning");
+      part(c.learning, "fc-learn", which === "learning", "learning");
       line.appendText(" + ");
-      part(c.review, "fc-due", which === "review");
+      part(c.review, "fc-due", which === "review", "review");
     }
     const buttons = bottom.createDiv({ cls: "fc-buttons" });
     if (this.phase === "front") {
@@ -1042,6 +1111,8 @@ export class ReviewView extends ItemView {
     const target = e.target as HTMLElement | null;
     if (target?.closest?.("input, textarea, [contenteditable=true]")) return false;
     const pressed = keyString(e);
+    // Space or Enter on a focused kind switch presses it, rather than starting the session.
+    if (target?.closest?.(".fc-kind") && (e.key === " " || e.key === "Enter")) return false;
     const keys = this.plugin.settings.keys;
     const is = (a: ActionName) => keys[a].includes(pressed);
     // A held key auto-repeats: without this, holding Space would reveal and then rate Good.
@@ -1049,8 +1120,11 @@ export class ReviewView extends ItemView {
     let handled = true;
 
     if (this.phase === "overview") {
+      const kind = this.filtered ? undefined : ALL_KINDS[["1", "2", "3"].indexOf(pressed)];
       if (is("showAnswer") || pressed === "s") this.start();
-      else handled = this.globalKey(is);
+      else if (this.globalKey(is)) handled = true;
+      else if (kind) this.toggleKind(kind);
+      else handled = false;
     } else if (this.phase === "back" && this.crownsPending && (is("revealNext") || is("showAnswer"))) {
       this.queuedReveals++;
     } else if (this.phase === "back" && this.crowns && is("revealNext") && this.crowns.answers.some((a) => a.hasClass("fc-crowned"))) {

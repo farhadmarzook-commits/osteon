@@ -51,7 +51,13 @@ export interface Queue {
   pile?: number;
   /** New cards held back right now by adaptive new cards. */
   newHeld?: number;
+  /** Cards of the kinds left out of this session that are still waiting (`restrictQueue`). */
+  skipped?: { fresh: number; learning: number; review: number };
 }
+
+/** The three counts: new (blue), learning (red), review (green). */
+export type CardKind = "fresh" | "learning" | "review";
+export const ALL_KINDS: readonly CardKind[] = ["fresh", "learning", "review"];
 
 export interface TodayStats {
   newStudied: number;
@@ -268,6 +274,27 @@ export function buildQueue(
 
 export function counts(q: Queue): { fresh: number; learning: number; review: number } {
   return { fresh: q.fresh.length, learning: q.learning.length, review: q.review.length };
+}
+
+/**
+ * A session of only some kinds of card. This only narrows what is shown: the full queue is built
+ * first, so limits, burying and adaptive new cards are worked out as always, and the cards left
+ * out keep their schedule.
+ */
+export function restrictQueue(q: Queue, kinds: ReadonlySet<CardKind>): Queue {
+  if (ALL_KINDS.every((k) => kinds.has(k))) return q;
+  const keep = (k: CardKind) => (kinds.has(k) ? q[k] : []);
+  const left = (k: CardKind) => (kinds.has(k) ? 0 : q[k].length);
+  return {
+    ...q,
+    fresh: keep("fresh"),
+    learning: keep("learning"),
+    review: keep("review"),
+    // With learning off, a card coming due later today is not something to wait for.
+    nextLearningDue: kinds.has("learning") ? q.nextLearningDue : undefined,
+    newHeld: kinds.has("fresh") ? q.newHeld : 0,
+    skipped: { fresh: left("fresh"), learning: left("learning"), review: left("review") },
+  };
 }
 
 /**

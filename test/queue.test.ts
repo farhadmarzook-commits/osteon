@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deckFor, findClozeAlias, inDeck, refsForNote } from "../src/core/collection";
 import type { LogEvent } from "../src/core/log";
 import { parseNote } from "../src/core/parser";
-import { buildQueue, counts, DEFAULT_QUEUE, nextCard, type QueueItem } from "../src/core/queue";
+import { buildQueue, counts, DEFAULT_QUEUE, nextCard, restrictQueue, type CardKind, type QueueItem } from "../src/core/queue";
 import { DEFAULT_SCHEDULER, formatInterval, makeScheduler, parseSteps, previewDue, newCard } from "../src/core/scheduler";
 import { replay } from "../src/core/state";
 
@@ -210,5 +210,81 @@ describe("same-day miss cap and adaptive new cards (0.21.0)", () => {
     const rested = buildQueue(items(10, [...agains(keyOf(0), 3), ...agains(keyOf(1), 1)]), now, { ...DEFAULT_QUEUE, missCap: 3, newPauseAbove: 1 });
     expect(rested.pile).toBe(1);
     expect(rested.fresh.length).toBeGreaterThan(0);
+  });
+});
+
+describe("studying only some kinds of card (new / learning / review)", () => {
+  const now = new Date("2026-09-27T12:00:00.000Z");
+  const only = (...k: CardKind[]) => new Set<CardKind>(k);
+  // Card 0 is due for review, cards 1-2 were missed a minute ago (learning), the rest are new.
+  const events = [
+    rev("2026-08-01T10:00:00.000Z", keyOf(0)), rev("2026-08-01T10:10:00.000Z", keyOf(0)),
+    rev("2026-09-27T11:58:00.000Z", keyOf(1), "again"), rev("2026-09-27T11:58:30.000Z", keyOf(2), "again"),
+  ];
+  const full = () => buildQueue(items(8, events), now, DEFAULT_QUEUE);
+
+  it("all three kinds on is the queue unchanged", () => {
+    const q = full();
+    expect(counts(q)).toEqual({ fresh: 5, learning: 2, review: 1 });
+    expect(restrictQueue(q, only("fresh", "learning", "review"))).toBe(q);
+  });
+
+  it("keeps only the chosen kinds and says how many of the others are waiting", () => {
+    const q = full();
+    const greens = restrictQueue(q, only("review"));
+    expect(counts(greens)).toEqual({ fresh: 0, learning: 0, review: 1 });
+    expect(greens.skipped).toEqual({ fresh: 5, learning: 2, review: 0 });
+    const noReds = restrictQueue(q, only("fresh", "review"));
+    expect(counts(noReds)).toEqual({ fresh: 5, learning: 0, review: 1 });
+    expect(noReds.skipped).toEqual({ fresh: 0, learning: 2, review: 0 });
+    const reds = restrictQueue(q, only("learning"));
+    expect(counts(reds)).toEqual({ fresh: 0, learning: 2, review: 0 });
+    // The full queue is left as it was: nothing is rescheduled, buried or dropped.
+    expect(counts(q)).toEqual({ fresh: 5, learning: 2, review: 1 });
+  });
+
+  it("never serves a card of a kind that is off, and ends when the chosen kinds run out", () => {
+    const noReds = restrictQueue(full(), only("fresh", "review"));
+    const seen: string[] = [];
+    for (let n = 0; n < 20; n++) {
+      const next = nextCard(noReds, now, n);
+      if (!next) break;
+      seen.push(next.ref.card.front);
+      noReds.fresh = noReds.fresh.filter((i) => i !== next);
+      noReds.review = noReds.review.filter((i) => i !== next);
+    }
+    expect(seen).toHaveLength(6);
+    expect(seen.some((f) => f.includes("Fact 1") || f.includes("Fact 2"))).toBe(false);
+    expect(nextCard(restrictQueue(full(), only("review")), now, 1)?.ref.card.front).toContain("Fact 0");
+  });
+
+  it("with learning off, a learning card coming due later doesn't keep the session waiting", () => {
+    // Missed just now: due in a minute, then within the learn-ahead limit.
+    const later = buildQueue(items(3, [rev("2026-09-27T11:59:50.000Z", keyOf(0), "again")]), now, { ...DEFAULT_QUEUE, learnAheadMins: 0 });
+    expect(later.nextLearningDue).toBeDefined();
+    expect(restrictQueue(later, only("fresh", "review")).nextLearningDue).toBeUndefined();
+    expect(restrictQueue(later, only("learning")).nextLearningDue).toEqual(later.nextLearningDue);
+    const due = buildQueue(items(8, events), new Date("2026-09-27T12:05:00.000Z"), DEFAULT_QUEUE);
+    expect(nextCard(due, new Date("2026-09-27T12:05:00.000Z"), 0)?.ref.card.front).toContain("Fact 1");
+    expect(nextCard(restrictQueue(due, only("fresh", "review")), new Date("2026-09-27T12:05:00.000Z"), 0)?.ref.card.front).not.toMatch(/Fact [12] /);
+  });
+
+  it("leaves the daily limits alone: the same new cards as in the full queue", () => {
+    // Two of today's four new cards were already studied (cards 1 and 2).
+    const q = buildQueue(items(40, events), now, { ...DEFAULT_QUEUE, newPerDay: 4 });
+    expect(q.fresh).toHaveLength(2);
+    expect(restrictQueue(q, only("fresh")).fresh).toEqual(q.fresh);
+  });
+
+  it("adaptive new cards still pauses new cards, and held cards aren't shown when new is off", () => {
+    const q = buildQueue(items(8, events), now, { ...DEFAULT_QUEUE, newPauseAbove: 1 });
+    expect(q.newHeld).toBe(5);
+    const blues = restrictQueue(q, only("fresh"));
+    expect(blues.fresh).toHaveLength(0);
+    expect(blues.newHeld).toBe(5);
+    expect(blues.pile).toBe(2);
+    const greens = restrictQueue(q, only("review"));
+    expect(greens.newHeld).toBe(0);
+    expect(greens.skipped).toEqual({ fresh: 0, learning: 2, review: 0 });
   });
 });

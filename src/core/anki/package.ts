@@ -144,6 +144,11 @@ function rows<T>(db: Database, sql: string, map: (r: unknown[]) => T): T[] {
   return res.length ? res[0].values.map((r) => map(r as unknown[])) : [];
 }
 
+/** A text column as a string; anything else (null, a blob) reads as empty. */
+function text(v: unknown): string {
+  return typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+}
+
 function hasTable(db: Database, name: string): boolean {
   return rows(db, `SELECT name FROM sqlite_master WHERE type='table' AND name='${name}'`, (r) => r[0]).length > 0;
 }
@@ -174,12 +179,12 @@ function readCollection(db: Database): Omit<AnkiCollection, "mediaIndex" | "form
     }
   } else {
     const [modelsJson, decksJson] = rows(db, "SELECT models, decks FROM col", (r) => r)[0] ?? ["{}", "{}"];
-    const models = JSON.parse(String(modelsJson || "{}")) as Record<string, { id?: number; name: string; type?: number; flds?: Array<{ name: string; ord: number }>; tmpls?: unknown[] }>;
+    const models = JSON.parse(text(modelsJson) || "{}") as Record<string, { id?: number; name: string; type?: number; flds?: Array<{ name: string; ord: number }>; tmpls?: unknown[] }>;
     for (const [id, m] of Object.entries(models)) {
       const fields = [...(m.flds ?? [])].sort((a, b) => a.ord - b.ord).map((f) => f.name);
       notetypes.set(Number(id), { id: Number(id), name: m.name, kind: m.type === 1 ? "cloze" : "normal", fields, templates: m.tmpls?.length ?? 1 });
     }
-    const deckObj = JSON.parse(String(decksJson || "{}")) as Record<string, { name: string }>;
+    const deckObj = JSON.parse(text(decksJson) || "{}") as Record<string, { name: string }>;
     for (const [id, d] of Object.entries(deckObj)) decks.set(Number(id), d.name);
   }
 
@@ -187,8 +192,8 @@ function readCollection(db: Database): Omit<AnkiCollection, "mediaIndex" | "form
     id: Number(r[0]),
     guid: String(r[1]),
     mid: Number(r[2]),
-    tags: String(r[3] ?? "").trim().split(/\s+/).filter(Boolean),
-    fields: String(r[4] ?? "").split("\x1f"),
+    tags: text(r[3]).trim().split(/\s+/).filter(Boolean),
+    fields: text(r[4]).split("\x1f"),
   }));
   // Cards in a filtered deck keep their home deck and due in odid/odue.
   const cards = rows(db, "SELECT id, nid, did, ord, type, queue, due, ivl, factor, flags, odid, odue FROM cards ORDER BY nid, ord", (r) => {

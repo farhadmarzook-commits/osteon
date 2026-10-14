@@ -2,6 +2,7 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { parseItemList, unmappedItems, type Exam } from "../../core/exams";
 import type FlashcardsPlugin from "../../main";
+import { destructive } from "../compat";
 
 const SOURCE_NAMES: Record<string, string> = { nbme: "NBME", free120: "Free 120", cms: "NBME CMS", amboss: "AMBOSS" };
 
@@ -88,7 +89,7 @@ export class ExamImportModal extends Modal {
     const bar = new Setting(contentEl);
     if (saved)
       bar.addButton((b) =>
-        b.setButtonText("Delete saved result").setWarning().onClick(async () => {
+        destructive(b).setButtonText("Delete saved result").onClick(async () => {
           await this.plugin.exams.remove(exam.id);
           new Notice(`Removed your ${exam.name} result (tags already added stay).`);
           this.pick(exam.id);

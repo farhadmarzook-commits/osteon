@@ -303,7 +303,7 @@ export class DeckView extends ItemView {
     browse.onclick = () => this.plugin.openBrowse();
     const stats = buttons.createEl("button", { text: "Stats" });
     stats.onclick = () => this.plugin.openStats(null);
-    const filtered = buttons.createEl("button", { text: "Create Filtered Deck" });
+    const filtered = buttons.createEl("button", { text: "Create filtered deck" });
     filtered.onclick = () => new FilteredDeckModal(this.app, this.plugin).open();
     const weak = this.plugin.weakToday().length;
     const wb = buttons.createEl("button", { text: weak ? `Weak spots (${weak})` : "Weak spots" });

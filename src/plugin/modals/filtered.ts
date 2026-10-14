@@ -3,6 +3,7 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import { buildFiltered, customStudyDeck, FILTERED_ORDERS, type CustomStudyKind, type CustomStudyState, type FilteredDeck, type FilteredOrder } from "../../core/filtered";
 import { counts } from "../../core/queue";
 import type FlashcardsPlugin from "../../main";
+import { destructive } from "../compat";
 
 function newId(plugin: FlashcardsPlugin): string {
   let n = 1;
@@ -73,9 +74,8 @@ export class FilteredDeckModal extends Modal {
     const buttons = new Setting(contentEl);
     if (editing) {
       buttons.addButton((b) =>
-        b
+        destructive(b)
           .setButtonText("Delete")
-          .setWarning()
           .onClick(async () => {
             await this.plugin.deleteFilteredDeck(this.def.id);
             this.close();

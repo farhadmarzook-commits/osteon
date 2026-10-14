@@ -372,6 +372,8 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
 /* On phones, clear Obsidian's floating navbar using its own size variables (the measured value wins if bigger). */
 .is-phone .fc-bottom { padding-bottom: calc(0.6em + max(var(--fc-navbar-clearance, 0px), calc(var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px)))); }
 .fc-version { text-align: center; font-size: var(--font-ui-smaller); margin-top: 0.5em; opacity: 0.6; }
+/* Settings rows that carry something wide (the controller table, the theme sample) under the name and control. */
+.setting-item.fc-setting-stack { flex-wrap: wrap; } .fc-setting-stack > .fc-setting-wide { flex: 0 0 100%; width: 100%; min-width: 0; }
 .fc-pad-table { width: 100%; margin: 0.4em 0 1em; font-size: var(--font-ui-small); } .fc-pad-table th { text-align: left; color: var(--text-muted); font-weight: 500; } .fc-pad-table td { padding: 0.15em 0.3em; } .fc-pad-table select { width: 100%; }
 
 /* ---- What I keep missing (spec 0012) ---- */
@@ -445,3 +447,25 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
 
 /* New cards held back by Adaptive new cards: shown as waiting */
 .fc-remaining .fc-held { opacity: 0.55; }
+
+/* The answer just given, shown for a moment just above the bottom bar. Four looks, picked in settings. */
+.fc-flash-host { position: relative; }
+.fc-answer-flash { --fc-flash: #6b7280; position: absolute; bottom: calc(var(--fc-flash-bottom, 84px) + 8px); left: 50%; z-index: 30; transform: translateX(-50%); pointer-events: none; animation: fc-answer-flash 0.8s ease-out forwards; }
+.fc-flash-again { --fc-flash: #dc2626; }
+.fc-flash-good { --fc-flash: #16a34a; }
+.fc-flash-easy { --fc-flash: #2563eb; }
+.theme-dark .fc-flash-again { --fc-flash: #f87171; }
+.theme-dark .fc-flash-hard { --fc-flash: #9ca3af; }
+.theme-dark .fc-flash-good { --fc-flash: #4ade80; }
+.theme-dark .fc-flash-easy { --fc-flash: #60a5fa; }
+.fc-flash-as-line { bottom: var(--fc-flash-bottom, 84px); width: 100%; height: 3px; background: var(--fc-flash); }
+.fc-flash-as-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fc-flash); }
+.fc-flash-as-word { font-size: var(--font-ui-small); font-weight: 600; color: var(--fc-flash); }
+.fc-flash-as-pill { padding: 0.3em 1em; border-radius: 999px; font-size: 1.15em; font-weight: 700; color: #fff; background: var(--fc-flash); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3); }
+.theme-dark .fc-flash-as-pill { color: #111; }
+@keyframes fc-answer-flash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { opacity: 0; }
+}

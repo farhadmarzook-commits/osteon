@@ -249,7 +249,7 @@ export class ReviewView extends ItemView {
       row("New:", c.fresh, "fc-new");
       row("Learning:", c.learning, "fc-learn");
       row("To Review:", c.review, "fc-due");
-      const btn = wrap.createEl("button", { text: "Study Now", cls: "mod-cta fc-study-now" });
+      const btn = wrap.createEl("button", { text: "Study now", cls: "mod-cta fc-study-now" });
       btn.onclick = () => this.start();
     } else {
       // The three counts are switches: one that is off is left out of the session about to start.
@@ -275,7 +275,7 @@ export class ReviewView extends ItemView {
             : "Click a kind (or press 1, 2 or 3) to leave it out of this session.",
       });
       if (q.newHeld) wrap.createEl("p", { cls: "fc-muted", text: this.heldNote(q) });
-      const btn = wrap.createEl("button", { text: "Study Now", cls: "mod-cta fc-study-now" });
+      const btn = wrap.createEl("button", { text: "Study now", cls: "mod-cta fc-study-now" });
       btn.onclick = () => this.start();
       // A timed sitting: stops cleanly when the time is up, most at-risk cards first.
       const timedRow = wrap.createDiv({ cls: "fc-timed" });
@@ -587,7 +587,7 @@ export class ReviewView extends ItemView {
     }
     const buttons = bottom.createDiv({ cls: "fc-buttons" });
     if (this.phase === "front") {
-      const show = buttons.createEl("button", { text: "Show Answer", cls: "fc-show-answer" });
+      const show = buttons.createEl("button", { text: "Show answer", cls: "fc-show-answer" });
       show.onclick = () => {
         trace("Show Answer button");
         this.showBack();
@@ -771,12 +771,12 @@ export class ReviewView extends ItemView {
     for (const l of later) l.addClass("fc-crown-later");
     const bar = backEl.createDiv({ cls: "fc-crown-bar" });
     backEl.prepend(bar);
-    const next = bar.createEl("button", { text: "Reveal Next (N)" });
+    const next = bar.createEl("button", { text: "Reveal next (N)" });
     next.onclick = (e) => {
       e.stopPropagation();
       this.revealNext();
     };
-    const all = bar.createEl("button", { text: "Toggle All (,)" });
+    const all = bar.createEl("button", { text: "Toggle all (,)" });
     all.onclick = (e) => {
       e.stopPropagation();
       this.toggleAllCrowns();
@@ -826,6 +826,7 @@ export class ReviewView extends ItemView {
     trace(`answer ${rating} (phase ${this.phase}, busy ${this.busy})`);
     if (this.phase !== "back" || !this.current || this.busy) return;
     this.busy = true;
+    this.flashAnswer(rating);
     try {
       const item = this.current;
       const def = this.filteredDef();
@@ -867,6 +868,22 @@ export class ReviewView extends ItemView {
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Show the answer just given for a moment, just above the bottom bar, so a key press or tap is seen to register. */
+  private flashAnswer(rating: RatingName): void {
+    const style = this.plugin.settings.answerFeedback;
+    this.containerEl.querySelectorAll(".fc-answer-flash").forEach((e) => e.remove());
+    if (style === "off") return;
+    this.containerEl.addClass("fc-flash-host");
+    const el = this.containerEl.createDiv({
+      cls: `fc-answer-flash fc-flash-as-${style} fc-flash-${rating}`,
+      text: style === "word" || style === "pill" ? LABEL[rating] : "",
+      attr: { role: "status", "aria-label": LABEL[rating] },
+    });
+    const bar = this.contentEl.querySelector<HTMLElement>(".fc-bottom")?.offsetHeight ?? 0;
+    if (bar) el.setCssProps({ "--fc-flash-bottom": `${bar}px` });
+    window.setTimeout(() => el.remove(), 800);
   }
 
   private async undo(): Promise<void> {

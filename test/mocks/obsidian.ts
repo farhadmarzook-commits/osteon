@@ -115,6 +115,9 @@ export class App {
 export class PluginSettingTab {
   constructor(..._args: unknown[]) {}
 }
+export function requireApiVersion(_version: string): boolean {
+  return true;
+}
 export class Setting {}
 export class Modal {
   constructor(..._args: unknown[]) {}

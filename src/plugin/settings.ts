@@ -1,5 +1,6 @@
 import type { DeckRename } from "../core/collection";
-import { App, normalizePath, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, normalizePath, Notice, PluginSettingTab, requireApiVersion, Setting } from "obsidian";
+import type { SettingDefinition, SettingDefinitionGroup, SettingGroup } from "obsidian";
 import type { FilteredDeck } from "../core/filtered";
 import { DEFAULT_PAD_BINDINGS, PAD_ACTIONS, resolveAction, type PadAction, type PadBindings } from "../core/gamepad";
 import { completePreset, DEFAULT_PRESET_ID, defaultPreset, type Preset } from "../core/presets";
@@ -79,6 +80,16 @@ export const DEFAULT_KEYS: Record<ActionName, string[]> = {
   customStudy: ["c"],
   close: ["Escape"],
 };
+
+/** What shows for a moment after an answer (review screen). */
+export const ANSWER_FEEDBACK = {
+  off: "Nothing",
+  line: "Thin coloured line",
+  dot: "Coloured dot",
+  word: "Small word",
+  pill: "Bold label",
+} as const;
+export type AnswerFeedback = keyof typeof ANSWER_FEEDBACK;
 
 export type CardTheme = "obsidian" | "anki" | "anking" | "paper" | "contrast" | "image";
 
@@ -161,6 +172,8 @@ export interface FlashcardsSettings {
   gamepad: { enabled: boolean; bindings: PadBindings };
   /** Phone: tap the right side of the back for Good, the left for Again (like AnkiMobile). */
   tapToAnswer: boolean;
+  /** How the answer just given (Again, Hard, Good, Easy) shows for a moment, so a key press or tap is seen to register. */
+  answerFeedback: AnswerFeedback;
   /** Phone: shake to undo the last answer (like AnkiMobile). */
   shakeToUndo: boolean;
   /** Card theme (the review screen's card area), like Anki's card styling add-ons. */
@@ -201,6 +214,7 @@ export const DEFAULT_SETTINGS: FlashcardsSettings = {
   fontSize: 20,
   gamepad: { enabled: true, bindings: structuredClone(DEFAULT_PAD_BINDINGS) },
   tapToAnswer: true,
+  answerFeedback: "word",
   shakeToUndo: true,
   cardTheme: "obsidian",
   cardBackground: "",
@@ -263,6 +277,7 @@ export function mergeSettings(saved: Record<string, unknown> | null): Flashcards
         : structuredClone(DEFAULT_PAD_BINDINGS),
     },
     tapToAnswer: s.tapToAnswer ?? true,
+    answerFeedback: s.answerFeedback && s.answerFeedback in ANSWER_FEEDBACK ? s.answerFeedback : "word",
     shakeToUndo: s.shakeToUndo ?? true,
     cardTheme: s.cardTheme && s.cardTheme in CARD_THEMES ? s.cardTheme : "obsidian",
     cardBackground: s.cardBackground ?? "",
@@ -309,7 +324,48 @@ export function normaliseKey(k: string): string {
   return [...mods, base].join("+");
 }
 
+/** Read a setting by its key; a dot reaches into a nested group ("ai.enabled"). */
+export function getSettingPath(settings: object, key: string): unknown {
+  let at: unknown = settings;
+  for (const part of key.split(".")) {
+    if (at === null || typeof at !== "object" || !Object.prototype.hasOwnProperty.call(at, part)) return undefined;
+    at = (at as Record<string, unknown>)[part];
+  }
+  return at;
+}
+
+/** Write a setting by its key. A key that isn't a setting is refused, not created (false). */
+export function setSettingPath(settings: object, key: string, value: unknown): boolean {
+  const parts = key.split(".");
+  const last = parts.pop() ?? "";
+  const parent = parts.length ? getSettingPath(settings, parts.join(".")) : settings;
+  if (parent === null || typeof parent !== "object" || !Object.prototype.hasOwnProperty.call(parent, last)) return false;
+  (parent as Record<string, unknown>)[last] = value;
+  return true;
+}
+
+type Row = SettingDefinition;
+/** A headed section of the tab. */
+interface Section extends SettingDefinitionGroup {
+  type: "group";
+  items: Row[];
+}
+
+/**
+ * The settings tab, as a list of definitions (Obsidian 1.13 draws and searches them). A plain on/off
+ * or choice is a `control` bound to its settings key; anything with a side effect, a button or its
+ * own layout is a `render` row. Before 1.13, `display()` draws the same list by hand.
+ *
+ * Obsidian asks for the list once, when the plugin loads, and again only on `update()`; it runs the
+ * `render` rows each time the tab opens. So anything that can change (values, status text) is read
+ * inside `render`, and a row's name must be unique in its section (Obsidian matches rows by it).
+ */
 export class FlashcardsSettingTab extends PluginSettingTab {
+  /** The theme sample's holder while it is on screen, so the theme rows can redraw it. */
+  private sample: HTMLElement | null = null;
+  /** Before 1.13: the rows that come and go, so they can be shown and hidden in place. */
+  private legacyRows: Array<{ el: HTMLElement; visible: () => boolean }> = [];
+
   constructor(
     app: App,
     private plugin: FlashcardsPlugin,
@@ -319,144 +375,241 @@ export class FlashcardsSettingTab extends PluginSettingTab {
 
   hide(): void {
     this.plugin.saveSettingsSoon.run();
+    super.hide();
+  }
+
+  getControlValue(key: string): unknown {
+    return getSettingPath(this.plugin.settings, key);
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    if (setSettingPath(this.plugin.settings, key, value)) await this.plugin.saveSettings();
+  }
+
+  /** Draw every row again (for rows whose text depends on what was just changed). */
+  private redraw(): void {
+    if (requireApiVersion("1.13.0")) this.update();
+    else this.drawLegacy();
+  }
+
+  /** Show or hide the rows that depend on another setting (the background picture rows). */
+  private refreshVisible(): void {
+    if (requireApiVersion("1.13.0")) this.refreshDomState();
+    else for (const row of this.legacyRows) row.el.toggle(row.visible());
+  }
+
+  private drawSample(): void {
+    if (!this.sample) return;
+    this.sample.empty();
+    renderThemeSample(this.app, this.sample, this.plugin.settings);
+  }
+
+  /** Obsidian before 1.13 calls this; newer versions draw from `getSettingDefinitions()` and skip it. */
+  display(): void {
+    this.drawLegacy();
+  }
+
+  private drawLegacy(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+    this.legacyRows = [];
+    const draw = (def: Row) => {
+      const setting = new Setting(containerEl).setName(def.name);
+      if (def.desc) setting.setDesc(def.desc);
+      const { visible, control } = def;
+      if (typeof visible === "function") {
+        this.legacyRows.push({ el: setting.settingEl, visible });
+        setting.settingEl.toggle(visible());
+      }
+      // No row here uses the group argument (setting groups came with 1.11).
+      if (def.render) def.render(setting, null as unknown as SettingGroup);
+      else if (control?.type === "toggle") {
+        setting.addToggle((t) => t.setValue(this.getControlValue(control.key) === true).onChange((v) => void this.setControlValue(control.key, v)));
+      } else if (control?.type === "dropdown") {
+        setting.addDropdown((d) =>
+          d
+            .addOptions(control.options)
+            .setValue(String(this.getControlValue(control.key)))
+            .onChange((v) => void this.setControlValue(control.key, v)),
+        );
+      }
+    };
+    for (const item of this.getSettingDefinitions()) {
+      if (!("type" in item)) {
+        draw(item);
+        continue;
+      }
+      if (item.heading) new Setting(containerEl).setName(item.heading).setHeading();
+      item.items.forEach(draw);
+    }
   }
 
   /** Game controller: on/off, a button tester, and the bindings per side (like Contanki). */
-  private gamepadSettings(containerEl: HTMLElement, save: () => Promise<void>): void {
+  private gamepadRows(save: () => Promise<void>): Row[] {
     const s = this.plugin.settings;
-    new Setting(containerEl).setName("Game controller").setHeading();
-    new Setting(containerEl)
-      .setName("Use a game controller")
-      .setDesc("Like Anki's Contanki add-on (e.g. an 8BitDo Micro in controller mode). The buttons start with your Anki 8BitDo Micro setup.")
-      .addToggle((t) =>
-        t.setValue(s.gamepad.enabled).onChange(async (v) => {
-          s.gamepad.enabled = v;
-          await save();
-        }),
-      );
-    const tester = new Setting(containerEl).setName("Which button is which?").setDesc("Press Test, then a controller button, to see its number.");
-    tester.addButton((b) =>
-      b.setButtonText("Test").onClick(() => {
-        b.setButtonText("Press a button…");
-        this.plugin.gamepad.listener = (n) => {
-          this.plugin.gamepad.listener = null;
-          const dir = { 100: " (left)", 101: " (right)", 102: " (up)", 103: " (down)" }[n as 100] ?? "";
-          b.setButtonText(`Button ${n}${dir}`);
-        };
-      }),
-    );
-    const table = containerEl.createEl("table", { cls: "fc-pad-table" });
-    const draw = () => {
-      table.empty();
-      const head = table.createEl("tr");
-      for (const h of ["Button", "Question side", "Answer side", "Deck list"]) head.createEl("th", { text: h });
-      const b = s.gamepad.bindings;
-      const buttons = new Set<number>();
-      for (const ctx of ["question", "answer", "review", "decks", "all"] as const) for (const k of Object.keys(b[ctx])) buttons.add(Number(k));
-      for (const n of [...buttons].sort((x, y) => x - y)) {
-        const tr = table.createEl("tr");
-        const dir = { 100: " ←", 101: " →", 102: " ↑", 103: " ↓" }[n as 100] ?? "";
-        tr.createEl("td", { text: `${n}${dir}` });
-        for (const ctx of ["question", "answer", "decks"] as const) {
-          const sel = tr.createEl("td").createEl("select", { cls: "dropdown" });
-          sel.createEl("option", { text: "—", value: "" });
-          for (const [k, label] of Object.entries(PAD_ACTIONS)) sel.createEl("option", { text: label, value: k });
-          sel.value = resolveAction(b, n, ctx === "decks" ? "decks" : ctx);
-          sel.onchange = async () => {
-            b[ctx][String(n)] = sel.value as PadAction;
-            await save();
+    return [
+      {
+        name: "Use a game controller",
+        desc: "Like Anki's Contanki add-on (e.g. an 8BitDo Micro in controller mode). The buttons start with your Anki 8BitDo Micro setup.",
+        control: { type: "toggle", key: "gamepad.enabled" },
+      },
+      {
+        name: "Which button is which?",
+        desc: "Press Test, then a controller button, to see its number.",
+        render: (setting) => {
+          setting.addButton((b) =>
+            b.setButtonText("Test").onClick(() => {
+              b.setButtonText("Press a button…");
+              this.plugin.gamepad.listener = (n) => {
+                this.plugin.gamepad.listener = null;
+                const dir = { 100: " (left)", 101: " (right)", 102: " (up)", 103: " (down)" }[n as 100] ?? "";
+                b.setButtonText(`Button ${n}${dir}`);
+              };
+            }),
+          );
+        },
+      },
+      {
+        name: "Buttons",
+        desc: "What each controller button does on the question side, the answer side and the deck list.",
+        render: (setting) => {
+          setting.settingEl.addClass("fc-setting-stack");
+          const table = setting.settingEl.createEl("table", { cls: "fc-pad-table fc-setting-wide" });
+          const draw = () => {
+            table.empty();
+            const head = table.createEl("tr");
+            for (const h of ["Button", "Question side", "Answer side", "Deck list"]) head.createEl("th", { text: h });
+            const b = s.gamepad.bindings;
+            const buttons = new Set<number>();
+            for (const ctx of ["question", "answer", "review", "decks", "all"] as const) for (const k of Object.keys(b[ctx])) buttons.add(Number(k));
+            for (const n of [...buttons].sort((x, y) => x - y)) {
+              const tr = table.createEl("tr");
+              const dir = { 100: " ←", 101: " →", 102: " ↑", 103: " ↓" }[n as 100] ?? "";
+              tr.createEl("td", { text: `${n}${dir}` });
+              for (const ctx of ["question", "answer", "decks"] as const) {
+                const sel = tr.createEl("td").createEl("select", { cls: "dropdown" });
+                sel.createEl("option", { text: "—", value: "" });
+                for (const [k, label] of Object.entries(PAD_ACTIONS)) sel.createEl("option", { text: label, value: k });
+                sel.value = resolveAction(b, n, ctx === "decks" ? "decks" : ctx);
+                sel.onchange = async () => {
+                  b[ctx][String(n)] = sel.value as PadAction;
+                  await save();
+                };
+              }
+            }
           };
-        }
-      }
-    };
-    draw();
-    new Setting(containerEl)
-      .addButton((btn) =>
-        btn.setButtonText("Add a button").onClick(() => {
-          btn.setButtonText("Press it on the controller…");
-          this.plugin.gamepad.listener = async (n) => {
-            this.plugin.gamepad.listener = null;
-            s.gamepad.bindings.all[String(n)] ??= "";
-            await save();
-            btn.setButtonText("Add a button");
-            draw();
-          };
-        }),
-      )
-      .addButton((btn) =>
-        btn.setButtonText("Reset to my 8BitDo Micro setup").onClick(async () => {
-          s.gamepad.bindings = structuredClone(DEFAULT_PAD_BINDINGS);
-          await save();
           draw();
-        }),
-      );
+          setting
+            .addButton((btn) =>
+              btn.setButtonText("Add a button").onClick(() => {
+                btn.setButtonText("Press it on the controller…");
+                this.plugin.gamepad.listener = async (n) => {
+                  this.plugin.gamepad.listener = null;
+                  s.gamepad.bindings.all[String(n)] ??= "";
+                  await save();
+                  btn.setButtonText("Add a button");
+                  draw();
+                };
+              }),
+            )
+            .addButton((btn) =>
+              btn.setButtonText("Reset to my 8BitDo Micro setup").onClick(async () => {
+                s.gamepad.bindings = structuredClone(DEFAULT_PAD_BINDINGS);
+                await save();
+                draw();
+              }),
+            );
+          // Drawing the row again only clears its controls, so take the table away with it.
+          return () => table.remove();
+        },
+      },
+    ];
   }
 
   /** Card theme dropdown with a live sample card (and the background picture options). */
-  private themeSettings(containerEl: HTMLElement, save: () => Promise<void>): void {
+  private themeRows(save: () => Promise<void>): Row[] {
     const s = this.plugin.settings;
-    const preview = createDiv();
-    const extra = createDiv();
-    const draw = () => {
-      preview.empty();
-      renderThemeSample(this.app, preview, s);
-      extra.empty();
-      if (s.cardTheme !== "image") return;
-      new Setting(extra)
-        .setName("Background picture")
-        .setDesc("A picture in your vault, e.g. Attachments/Background.jpg")
-        .addText((t) =>
-          t.setValue(s.cardBackground).onChange(async (v) => {
-            s.cardBackground = v.trim().replace(/^!?\[\[|\]\]$/g, "");
-            await save();
-            preview.empty();
-            renderThemeSample(this.app, preview, s);
-          }),
-        );
-      new Setting(extra)
-        .setName("Dim the picture")
-        .setDesc("Darker keeps the text readable.")
-        .addSlider((sl) =>
-          sl
-            .setLimits(0, 0.9, 0.05)
-            .setValue(s.cardBackgroundDim)
-            .setDynamicTooltip()
-            .onChange(async (v) => {
-              s.cardBackgroundDim = v;
+    const picture = () => s.cardTheme === "image";
+    return [
+      {
+        name: "Card theme",
+        desc: "How cards look while you review. The sample below updates as you choose.",
+        render: (setting) => {
+          setting.addDropdown((d) => {
+            for (const [k, label] of Object.entries(CARD_THEMES)) d.addOption(k, label);
+            d.setValue(s.cardTheme).onChange(async (v) => {
+              s.cardTheme = v as CardTheme;
               await save();
-              preview.empty();
-              renderThemeSample(this.app, preview, s);
+              this.refreshVisible();
+              this.drawSample();
+            });
+          });
+        },
+      },
+      {
+        name: "Background picture",
+        desc: "A picture in your vault, e.g. Attachments/Background.jpg",
+        visible: picture,
+        render: (setting) => {
+          setting.addText((t) =>
+            t.setValue(s.cardBackground).onChange(async (v) => {
+              s.cardBackground = v.trim().replace(/^!?\[\[|\]\]$/g, "");
+              await save();
+              this.drawSample();
             }),
-        );
-    };
-    new Setting(containerEl)
-      .setName("Card theme")
-      .setDesc("How cards look while you review. The sample below updates as you choose.")
-      .addDropdown((d) => {
-        for (const [k, label] of Object.entries(CARD_THEMES)) d.addOption(k, label);
-        d.setValue(s.cardTheme).onChange(async (v) => {
-          s.cardTheme = v as CardTheme;
-          await save();
-          draw();
-        });
-      });
-    containerEl.appendChild(extra);
-    containerEl.appendChild(preview);
-    draw();
+          );
+        },
+      },
+      {
+        name: "Dim the picture",
+        desc: "Darker keeps the text readable.",
+        visible: picture,
+        render: (setting) => {
+          // Obsidian 1.13 shows the value beside the slider; before that it is written out here.
+          const shown = requireApiVersion("1.13.0") ? null : setting.controlEl.createSpan({ text: String(s.cardBackgroundDim) });
+          setting.addSlider((sl) =>
+            sl
+              .setLimits(0, 0.9, 0.05)
+              .setValue(s.cardBackgroundDim)
+              .onChange(async (v) => {
+                s.cardBackgroundDim = v;
+                shown?.setText(String(v));
+                await save();
+                this.drawSample();
+              }),
+          );
+        },
+      },
+      {
+        name: "Sample card",
+        searchable: false,
+        render: (setting) => {
+          setting.settingEl.addClass("fc-setting-stack");
+          const holder = setting.settingEl.createDiv({ cls: "fc-setting-wide" });
+          this.sample = holder;
+          this.drawSample();
+          return () => {
+            holder.remove();
+            if (this.sample === holder) this.sample = null;
+          };
+        },
+      },
+    ];
   }
 
-  display(): void {
-    const { containerEl } = this;
+  getSettingDefinitions(): Array<Row | Section> {
     const s = this.plugin.settings;
     const save = async () => this.plugin.saveSettings();
-    containerEl.empty();
+    const keyId = () => aiKeyId(s.ai.provider);
+    const folders = (v: string) => v.split(",").map((x) => x.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean);
 
-    const num = (name: string, desc: string, get: () => number, set: (v: number) => void, valid: (v: number) => boolean) =>
-      new Setting(containerEl)
-        .setName(name)
-        .setDesc(desc)
-        .addText((t) =>
-          t.setValue(String(get())).onChange(async (v) => {
+    const toggle = (name: string, desc: string, key: string): Row => ({ name, desc: desc || undefined, control: { type: "toggle", key } });
+    const num = (name: string, desc: string, get: () => number, set: (v: number) => void, valid: (v: number) => boolean): Row => ({
+      name,
+      desc: desc || undefined,
+      render: (setting) => {
+        setting.addText((t) =>
+          t.setValue(String(get())).onChange((v) => {
             if (v.trim() === "") return;
             const n = Number(v);
             if (!Number.isFinite(n) || !valid(n)) return;
@@ -464,390 +617,401 @@ export class FlashcardsSettingTab extends PluginSettingTab {
             this.plugin.saveSettingsSoon();
           }),
         );
-
-    new Setting(containerEl).setName("Decks").setHeading();
-    new Setting(containerEl)
-      .setName("Presets")
-      .setDesc(
-        "Daily limits, learning steps, desired retention and more live in presets, as in Anki. " +
-          "Open a deck's options from the gear icon in the deck list; this edits the Default preset.",
-      )
-      .addButton((b) =>
-        b.setButtonText("Edit Default preset").onClick(() => new DeckOptionsModal(this.app, this.plugin, null).open()),
-      );
-
-    new Setting(containerEl).setName("Cards").setHeading();
-    // Folder settings re-scan the vault, so they apply when the field loses focus, not per keystroke.
-    new Setting(containerEl)
-      .setName("Card folders")
-      .setDesc("Notes tagged #flashcards are always scanned. Also scan every note in these folders (comma-separated).")
-      .addText((t) => {
-        t.setValue(s.cardFolders.join(", "));
-        onChange(t.inputEl, async () => {
-          s.cardFolders = t.getValue().split(",").map((x) => x.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean);
-          await this.plugin.applyFolderSettings();
-        });
-      });
-    new Setting(containerEl)
-      .setName("Review data folder")
-      .setDesc(
-        "Where review history is kept (one sub-folder per device). Must not start with a dot, so it syncs. " +
-          "Changing it does not move existing history: move the old folder in the file explorer first.",
-      )
-      .addText((t) => {
-        t.setValue(s.stateFolder);
-        onChange(t.inputEl, async () => {
-          const folder = t.getValue().trim().replace(/^\/+|\/+$/g, "");
-          if (!folder || folder.startsWith(".")) {
-            new Notice("The review data folder can't be empty or start with a dot.");
-            t.setValue(s.stateFolder);
-            return;
-          }
-          if (folder === s.stateFolder) return;
-          const old = s.stateFolder;
-          s.stateFolder = folder;
-          await this.plugin.applyFolderSettings();
-          if (this.app.vault.getAbstractFileByPath(`${old}/reviews`)) {
-            new Notice(`Review history in "${old}/reviews" is no longer loaded. Move it into "${folder}/" to keep it.`, 10000);
-          }
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Tag missed exam topics")
-      .setDesc("When you import exam results, add weak-area-nbme (or -cms, -amboss…) to the missed topics' notes.")
-      .addToggle((t) => t.setValue(s.tagExamMisses).onChange(async (v) => {
-        s.tagExamMisses = v;
-        await this.plugin.saveSettings();
-      }));
-
-    new Setting(containerEl).setName("Review").setHeading();
-    new Setting(containerEl).setName("Show intervals on buttons").addToggle((t) =>
-      t.setValue(s.showIntervals).onChange(async (v) => {
-        s.showIntervals = v;
-        await save();
-      }),
-    );
-    new Setting(containerEl).setName("Show remaining card count").addToggle((t) =>
-      t.setValue(s.showRemaining).onChange(async (v) => {
-        s.showRemaining = v;
-        await save();
-      }),
-    );
-    new Setting(containerEl)
-      .setName("Show the review heatmap under the deck list")
-      .setDesc("Like Anki's Review Heatmap add-on. The full graphs are under Statistics.")
-      .addToggle((t) =>
-        t.setValue(s.showHeatmap).onChange(async (v) => {
-          s.showHeatmap = v;
-          await save();
-        }),
-      );
-    num(
-      "Reveal answers one by one (🦴)",
-      "When a card asks for at least this many answers, the back hides each one as 🦴 (a list on separate lines inside one cloze counts as several answers). N reveals the next, a click reveals that one, comma reveals all. 0 turns it off. The bone button above a card switches that one card on or off.",
-      () => s.oneByOneMin,
-      (v) => (s.oneByOneMin = v),
-      (v) => Number.isInteger(v) && v >= 0,
-    );
-    new Setting(containerEl)
-      .setName("Adaptive new cards")
-      .setDesc("Hold new cards back while you are still relearning a lot of cards today, and bring them back as you clear them. Off: new cards follow each deck's daily limit only, as in Anki.")
-      .addToggle((t) =>
-        t.setValue(s.adaptiveNew).onChange(async (v) => {
-          s.adaptiveNew = v;
-          await save();
-        }),
-      );
-    num(
-      "Adaptive new cards: pause above this many cards in learning",
-      "Only used when Adaptive new cards is on. Default: 20.",
-      () => s.adaptiveNewPile,
-      (v) => (s.adaptiveNewPile = v),
-      (v) => Number.isInteger(v) && v > 0,
-    );
-    num(
-      "Rest a card after this many misses in one day",
-      "After this many Again answers in a day, the card waits until tomorrow instead of coming round again, and shows under Weak spots on the deck list. 0 turns it off (Anki keeps repeating).",
-      () => s.restAfterMisses,
-      (v) => (s.restAfterMisses = v),
-      (v) => Number.isInteger(v) && v >= 0,
-    );
-    new Setting(containerEl)
-      .setName("Warn when pictures aren't downloaded")
-      .setDesc("When Osteon starts, it reads a few pictures to check they are on this device. iCloud can offload them from a phone, which makes cards and notes with pictures hang.")
-      .addToggle((t) =>
-        t.setValue(s.checkDownloads).onChange(async (v) => {
-          s.checkDownloads = v;
-          await save();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("Shortcut note")
-      .setDesc("Opening this note opens the deck list instead. Bookmark it, or point an Obsidian home-screen widget at it, to get to your cards in one tap. Give a path such as “Flashcards.md”; leave empty to turn this off (do that to edit the note itself).")
-      .addText((t) =>
-        t
-          .setPlaceholder("Flashcards.md")
-          .setValue(s.homeNote)
-          .onChange(async (v) => {
-            s.homeNote = v.trim();
-            await save();
-          }),
-      )
-      .addButton((b) =>
-        b.setButtonText("Create the note").onClick(async () => {
-          const path = normalizePath(/\.md$/i.test(s.homeNote) ? s.homeNote : `${s.homeNote || "Flashcards"}.md`);
-          s.homeNote = path;
-          await save();
-          if (!this.app.vault.getAbstractFileByPath(path)) {
-            await this.app.vault.create(path, "This note is a shortcut: opening it opens the Osteon deck list.\nTo change that, see Settings → Osteon → Shortcut note.\n");
-          }
-          new Notice(`Shortcut note: ${path}`);
-          this.display();
-        }),
-      );
-    num("Card font size (px)", "", () => s.fontSize, (v) => (s.fontSize = v), (v) => v >= 10 && v <= 48);
-    this.themeSettings(containerEl, save);
-    this.gamepadSettings(containerEl, save);
-    new Setting(containerEl)
-      .setName("Tap to answer (phone)")
-      .setDesc("On the answer side, tap the right third of the screen for Good and the left third for Again, like AnkiMobile. On one-by-one cards the right side reveals the next answer first.")
-      .addToggle((t) =>
-        t.setValue(s.tapToAnswer).onChange(async (v) => {
-          s.tapToAnswer = v;
-          await save();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("Shake to undo (phone)")
-      .setDesc("Shake the phone to undo the last answer, like AnkiMobile. iOS asks for motion access the first time.")
-      .addToggle((t) =>
-        t.setValue(s.shakeToUndo).onChange(async (v) => {
-          s.shakeToUndo = v;
-          await save();
-        }),
-      );
-    num("Next day starts at (hour)", "Anki default: 4 (4 am)", () => s.dayStartHour, (v) => (s.dayStartHour = v), (v) => Number.isInteger(v) && v >= 0 && v <= 23);
-    num("Learn-ahead limit (minutes)", "Anki default: 20", () => s.learnAheadMins, (v) => (s.learnAheadMins = v), (v) => v >= 0);
-
-    new Setting(containerEl)
-      .setName("Review keys")
-      .setDesc("Separate several keys with commas. Examples: 1, Space, Enter, Mod+z (Cmd or Ctrl), Mod+Shift+D, Escape.")
-      .setHeading();
-    for (const action of Object.keys(ACTIONS) as ActionName[]) {
-      new Setting(containerEl).setName(ACTIONS[action]).addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_KEYS[action].join(", "))
-          .setValue(s.keys[action].join(", "))
-          .onChange((v) => {
-            s.keys[action] = v.split(",").map(normaliseKey).filter(Boolean);
-            this.plugin.saveSettingsSoon();
-          }),
-      );
-    }
-    new Setting(containerEl).addButton((b) =>
-      b.setButtonText("Reset keys to Anki defaults").onClick(async () => {
-        s.keys = { ...DEFAULT_KEYS };
-        await save();
-        this.display();
-      }),
-    );
-
-    new Setting(containerEl).setName("Medical-term hover").setHeading();
-    new Setting(containerEl)
-      .setName("Underline terms")
-      .setDesc("Terms on the card are underlined; hover (Mac) or tap (iPhone) for a definition. 'Hard terms only' works like AMBOSS: basic words like pelvis or fracture aren't underlined. Your own notes' titles always are.")
-      .addDropdown((d) =>
-        d
-          .addOption("strict", "Hard terms only (like AMBOSS)")
-          .addOption("uncommon", "Uncommon words")
-          .addOption("all", "All medical terms")
-          .addOption("off", "Off")
-          .setValue(s.hover.sensitivity)
-          .onChange(async (v) => {
-            s.hover.sensitivity = v as typeof s.hover.sensitivity;
-            await save();
-            this.plugin.terms.rebuildSoon();
-          }),
-      );
-    new Setting(containerEl)
-      .setName("Also on the front of cards")
-      .setDesc("Off by default: a definition can give away the answer.")
-      .addToggle((t) =>
-        t.setValue(s.hover.onFront).onChange(async (v) => {
-          s.hover.onFront = v;
-          await save();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("Also in notes (reading view)")
-      .addToggle((t) =>
-        t.setValue(s.hover.inNotes).onChange(async (v) => {
-          s.hover.inNotes = v;
-          await save();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("Use my notes")
-      .setDesc("A note whose title or alias matches a term gives the definition (its first paragraph and pictures).")
-      .addToggle((t) =>
-        t.setValue(s.hover.useNotes).onChange(async (v) => {
-          s.hover.useNotes = v;
-          await save();
-          this.plugin.terms.rebuildSoon();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("My terms list")
-      .setDesc(`Your own definitions and a never-underline list: ${s.stateFolder}/glossary/My terms.md`)
-      .addButton((b) => b.setButtonText("Open").onClick(() => void this.plugin.terms.openMyTerms()));
-    const meshStatus = this.plugin.terms.meshStatus();
-    new Setting(containerEl)
-      .setName("MeSH dictionary")
-      .setDesc(
-        `The U.S. National Library of Medicine's medical vocabulary, free with attribution. Downloaded once per device (about 30 MB) and kept on the device, not in the vault. ${meshStatus}`,
-      )
-      .addToggle((t) =>
-        t.setValue(s.hover.useMesh).onChange(async (v) => {
-          s.hover.useMesh = v;
-          await save();
-          this.plugin.terms.rebuildSoon();
-        }),
-      )
-      .addButton((b) =>
-        b.setButtonText(this.plugin.terms.hasMesh() ? "Update" : "Download").onClick(async () => {
-          b.setDisabled(true);
-          await this.plugin.terms.downloadMesh();
-          this.display();
-        }),
-      );
-
-    new Setting(containerEl).setName("AI helpers").setHeading();
-    const provider = s.ai.provider;
-    const keyId = aiKeyId(provider);
-    containerEl.createEl("p", {
-      cls: "setting-item-description",
-      text:
-        "Optional. Uses your own API key from the provider you choose (billed by that provider), or a model running on your own computer. " +
-        "When on, card text is sent to that provider to find hard terms and write short definitions (cached in the vault, " +
-        "so each card is looked at once), to explain cards you keep missing, and to suggest splits for overstuffed cards.",
+      },
     });
-    new Setting(containerEl)
-      .setName("Provider")
-      .setDesc("Each provider keeps its own key. “Other” works with any service that accepts OpenAI-style requests, including Ollama and LM Studio.")
-      .addDropdown((d) => {
-        for (const [id, p] of Object.entries(AI_PROVIDERS)) d.addOption(id, p.label);
-        d.setValue(provider).onChange(async (v) => {
-          s.ai.provider = v as AiProvider;
-          if (!s.ai.otherModel.trim()) s.ai.otherModel = AI_PROVIDERS[s.ai.provider].model ?? "";
-          await save();
-          if (s.ai.syncKey) await writeKeyFile(this.app, this.plugin.manifest.dir ?? "", getSecret(this.app, aiKeyId(s.ai.provider)));
-          this.display();
-        });
-      });
-    if (provider === "custom") {
-      new Setting(containerEl)
-        .setName("Server address")
-        .setDesc("The base address of the service, e.g. http://localhost:11434/v1 for Ollama.")
-        .addText((t) => {
-          t.setPlaceholder("https://…/v1").setValue(s.ai.baseUrl);
-          onChange(t.inputEl, async () => {
-            s.ai.baseUrl = t.getValue().trim();
-            await save();
-          });
-        });
-    }
-    new Setting(containerEl)
-      .setName("API key")
-      .setDesc("Stored on this device only, never in the vault, unless “Sync the key to my other devices” below is on.")
-      .addText((t) => {
-        t.inputEl.type = "password";
-        const placeholder = () => (getSecret(this.app, keyId) ? "•••••••• (saved)" : AI_PROVIDERS[provider].keyHint);
-        t.setPlaceholder(placeholder());
-        t.inputEl.addEventListener("change", () => {
-          setSecret(this.app, keyId, t.getValue().trim());
-          t.setValue("");
-          t.setPlaceholder(placeholder());
-          const key = getSecret(this.app, keyId);
-          if (s.ai.syncKey) void writeKeyFile(this.app, this.plugin.manifest.dir ?? "", key);
-          new Notice(key ? (s.ai.syncKey ? "API key saved, and synced to your other devices." : "API key saved on this device.") : "API key removed.");
-        });
-      });
-    new Setting(containerEl)
-      .setName("Sync the key to my other devices")
-      .setDesc(
-        "Keeps a copy of the key in a file in this vault's plugin folder, so your phone or second computer picks it up without typing it. " +
-          "Anyone who gets a copy of the vault's hidden settings folder gets the key too, so leave this off for a vault you share. Turning it off deletes the file.",
-      )
-      .addToggle((t) =>
-        t.setValue(s.ai.syncKey).onChange(async (v) => {
-          s.ai.syncKey = v;
-          await save();
-          await writeKeyFile(this.app, this.plugin.manifest.dir ?? "", v ? getSecret(this.app, keyId) : "");
-          if (v && !getSecret(this.app, keyId)) new Notice("Enter the key on this device, or wait for it to arrive from another one.");
-        }),
-      );
-    new Setting(containerEl).setName("Use AI").addToggle((t) =>
-      t.setValue(s.ai.enabled).onChange(async (v) => {
-        s.ai.enabled = v;
-        await save();
-      }),
-    );
-    if (provider === "anthropic") {
-      new Setting(containerEl)
-        .setName("Model")
-        .setDesc("Opus 5 is the most capable; Haiku 4.5 costs about a fifth as much.")
-        .addDropdown((d) =>
-          d
-            .addOption("claude-opus-5", "Claude Opus 5")
-            .addOption("claude-sonnet-5", "Claude Sonnet 5")
-            .addOption("claude-haiku-4-5", "Claude Haiku 4.5")
-            .setValue(s.ai.model)
-            .onChange(async (v) => {
-              s.ai.model = v as typeof s.ai.model;
-              await save();
-            }),
-        );
-    } else {
-      new Setting(containerEl)
-        .setName("Model")
-        .setDesc(
-          (s.ai.otherModel.trim() ? "" : "Needed before the AI helpers can run. ") +
-            "The model's name exactly as your provider lists it. A small, inexpensive model is enough for definitions.",
-        )
-        .addText((t) => {
-          t.setPlaceholder("model name").setValue(s.ai.otherModel);
-          onChange(t.inputEl, async () => {
-            s.ai.otherModel = t.getValue().trim();
-            await save();
-          });
-        });
-    }
-    new Setting(containerEl)
-      .setName("Never send cards from these folders")
-      .setDesc("Comma-separated.")
-      .addText((t) => {
-        t.setValue(s.ai.excludeFolders.join(", "));
-        onChange(t.inputEl, async () => {
-          s.ai.excludeFolders = t.getValue().split(",").map((x) => x.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean);
-          await save();
-        });
-      });
-    new Setting(containerEl)
-      .setName("Look at new cards automatically")
-      .setDesc("In small batches (up to 30 cards) while Obsidian is open. Larger runs always ask first.")
-      .addToggle((t) =>
-        t.setValue(s.ai.autoRun).onChange(async (v) => {
-          s.ai.autoRun = v;
-          await save();
-        }),
-      );
-    new Setting(containerEl)
-      .setName("Find hard terms now")
-      .setDesc(this.plugin.ai.statusText())
-      .addButton((b) => b.setButtonText("Run").onClick(() => void this.plugin.ai.runWithConfirm()));
 
-    containerEl.createDiv({ cls: "setting-item-description", text: `Installed version: ${this.plugin.manifest.version}` });
+    const decks: Section = {
+      type: "group",
+      heading: "Decks",
+      items: [
+        {
+          name: "Presets",
+          desc:
+            "Daily limits, learning steps, desired retention and more live in presets, as in Anki. " +
+            "Open a deck's options from the gear icon in the deck list; this edits the Default preset.",
+          render: (setting) => {
+            setting.addButton((b) => b.setButtonText("Edit Default preset").onClick(() => new DeckOptionsModal(this.app, this.plugin, null).open()));
+          },
+        },
+      ],
+    };
+
+    const cards: Section = {
+      type: "group",
+      heading: "Cards",
+      items: [
+        // Folder settings re-scan the vault, so they apply when the field loses focus, not per keystroke.
+        {
+          name: "Card folders",
+          desc: "Notes tagged #flashcards are always scanned. Also scan every note in these folders (comma-separated).",
+          render: (setting) => {
+            setting.addText((t) => {
+              t.setValue(s.cardFolders.join(", "));
+              onChange(t.inputEl, async () => {
+                s.cardFolders = folders(t.getValue());
+                await this.plugin.applyFolderSettings();
+              });
+            });
+          },
+        },
+        {
+          name: "Review data folder",
+          desc:
+            "Where review history is kept (one sub-folder per device). Must not start with a dot, so it syncs. " +
+            "Changing it does not move existing history: move the old folder in the file explorer first.",
+          render: (setting) => {
+            setting.addText((t) => {
+              t.setValue(s.stateFolder);
+              onChange(t.inputEl, async () => {
+                const folder = t.getValue().trim().replace(/^\/+|\/+$/g, "");
+                if (!folder || folder.startsWith(".")) {
+                  new Notice("The review data folder can't be empty or start with a dot.");
+                  t.setValue(s.stateFolder);
+                  return;
+                }
+                if (folder === s.stateFolder) return;
+                const old = s.stateFolder;
+                s.stateFolder = folder;
+                await this.plugin.applyFolderSettings();
+                if (this.app.vault.getAbstractFileByPath(`${old}/reviews`)) {
+                  new Notice(`Review history in "${old}/reviews" is no longer loaded. Move it into "${folder}/" to keep it.`, 10000);
+                }
+              });
+            });
+          },
+        },
+        toggle("Tag missed exam topics", "When you import exam results, add weak-area-nbme (or -cms, -amboss…) to the missed topics' notes.", "tagExamMisses"),
+      ],
+    };
+
+    const review: Section = {
+      type: "group",
+      heading: "Review",
+      items: [
+        toggle("Show intervals on buttons", "", "showIntervals"),
+        toggle("Show remaining card count", "", "showRemaining"),
+        toggle("Show the review heatmap under the deck list", "Like Anki's Review Heatmap add-on. The full graphs are under Statistics.", "showHeatmap"),
+        num(
+          "Reveal answers one by one (🦴)",
+          "When a card asks for at least this many answers, the back hides each one as 🦴 (a list on separate lines inside one cloze counts as several answers). N reveals the next, a click reveals that one, comma reveals all. 0 turns it off. The bone button above a card switches that one card on or off.",
+          () => s.oneByOneMin,
+          (v) => (s.oneByOneMin = v),
+          (v) => Number.isInteger(v) && v >= 0,
+        ),
+        toggle(
+          "Adaptive new cards",
+          "Hold new cards back while you are still relearning a lot of cards today, and bring them back as you clear them. Off: new cards follow each deck's daily limit only, as in Anki.",
+          "adaptiveNew",
+        ),
+        num(
+          "Adaptive new cards: pause above this many cards in learning",
+          "Only used when Adaptive new cards is on. Default: 20.",
+          () => s.adaptiveNewPile,
+          (v) => (s.adaptiveNewPile = v),
+          (v) => Number.isInteger(v) && v > 0,
+        ),
+        num(
+          "Rest a card after this many misses in one day",
+          "After this many Again answers in a day, the card waits until tomorrow instead of coming round again, and shows under Weak spots on the deck list. 0 turns it off (Anki keeps repeating).",
+          () => s.restAfterMisses,
+          (v) => (s.restAfterMisses = v),
+          (v) => Number.isInteger(v) && v >= 0,
+        ),
+        toggle(
+          "Warn when pictures aren't downloaded",
+          "When Osteon starts, it reads a few pictures to check they are on this device. iCloud can offload them from a phone, which makes cards and notes with pictures hang.",
+          "checkDownloads",
+        ),
+        {
+          name: "Shortcut note",
+          desc: "Opening this note opens the deck list instead. Bookmark it, or point an Obsidian home-screen widget at it, to get to your cards in one tap. Give a path such as “Flashcards.md”; leave empty to turn this off (do that to edit the note itself).",
+          render: (setting) => {
+            setting
+              .addText((t) =>
+                t
+                  .setPlaceholder("Flashcards.md")
+                  .setValue(s.homeNote)
+                  .onChange(async (v) => {
+                    s.homeNote = v.trim();
+                    await save();
+                  }),
+              )
+              .addButton((b) =>
+                b.setButtonText("Create the note").onClick(async () => {
+                  const path = normalizePath(/\.md$/i.test(s.homeNote) ? s.homeNote : `${s.homeNote || "Flashcards"}.md`);
+                  s.homeNote = path;
+                  await save();
+                  if (!this.app.vault.getAbstractFileByPath(path)) {
+                    await this.app.vault.create(path, "This note is a shortcut: opening it opens the Osteon deck list.\nTo change that, see Settings → Osteon → Shortcut note.\n");
+                  }
+                  new Notice(`Shortcut note: ${path}`);
+                  this.redraw();
+                }),
+              );
+          },
+        },
+        num("Card font size (px)", "", () => s.fontSize, (v) => (s.fontSize = v), (v) => v >= 10 && v <= 48),
+        ...this.themeRows(save),
+      ],
+    };
+
+    // The phone and timing rows have always followed the controller's, under its heading.
+    const controller: Section = {
+      type: "group",
+      heading: "Game controller",
+      items: [
+        ...this.gamepadRows(save),
+        toggle(
+          "Tap to answer (phone)",
+          "On the answer side, tap the right third of the screen for Good and the left third for Again, like AnkiMobile. On one-by-one cards the right side reveals the next answer first.",
+          "tapToAnswer",
+        ),
+        {
+          name: "Show what you answered",
+          desc: "After each answer, a brief sign just above the answer buttons shows that the key or tap registered and which answer it was (red Again, grey Hard, green Good, blue Easy).",
+          control: { type: "dropdown", key: "answerFeedback", options: ANSWER_FEEDBACK },
+        },
+        toggle("Shake to undo (phone)", "Shake the phone to undo the last answer, like AnkiMobile. iOS asks for motion access the first time.", "shakeToUndo"),
+        num("Next day starts at (hour)", "Anki default: 4 (4 am)", () => s.dayStartHour, (v) => (s.dayStartHour = v), (v) => Number.isInteger(v) && v >= 0 && v <= 23),
+        num("Learn-ahead limit (minutes)", "Anki default: 20", () => s.learnAheadMins, (v) => (s.learnAheadMins = v), (v) => v >= 0),
+      ],
+    };
+
+    const keys: Section = {
+      type: "group",
+      heading: "Review keys",
+      items: [
+        { name: "Separate several keys with commas", desc: "Examples: 1, Space, Enter, Mod+z (Cmd or Ctrl), Mod+Shift+D, Escape." },
+        ...(Object.keys(ACTIONS) as ActionName[]).map(
+          (action): Row => ({
+            name: ACTIONS[action],
+            render: (setting) => {
+              setting.addText((t) =>
+                t
+                  .setPlaceholder(DEFAULT_KEYS[action].join(", "))
+                  .setValue(s.keys[action].join(", "))
+                  .onChange((v) => {
+                    s.keys[action] = v.split(",").map(normaliseKey).filter(Boolean);
+                    this.plugin.saveSettingsSoon();
+                  }),
+              );
+            },
+          }),
+        ),
+        {
+          name: "Reset keys to Anki defaults",
+          render: (setting) => {
+            setting.addButton((b) =>
+              b.setButtonText("Reset").onClick(async () => {
+                s.keys = { ...DEFAULT_KEYS };
+                await save();
+                this.redraw();
+              }),
+            );
+          },
+        },
+      ],
+    };
+
+    const meshDesc = "The U.S. National Library of Medicine's medical vocabulary, free with attribution. Downloaded once per device (about 30 MB) and kept on the device, not in the vault.";
+    const hover: Section = {
+      type: "group",
+      heading: "Medical-term hover",
+      items: [
+        {
+          name: "Underline terms",
+          desc: "Terms on the card are underlined; hover (Mac) or tap (iPhone) for a definition. 'Hard terms only' works like AMBOSS: basic words like pelvis or fracture aren't underlined. Your own notes' titles always are.",
+          render: (setting) => {
+            setting.addDropdown((d) =>
+              d
+                .addOption("strict", "Hard terms only (like AMBOSS)")
+                .addOption("uncommon", "Uncommon words")
+                .addOption("all", "All medical terms")
+                .addOption("off", "Off")
+                .setValue(s.hover.sensitivity)
+                .onChange(async (v) => {
+                  s.hover.sensitivity = v as typeof s.hover.sensitivity;
+                  await save();
+                  this.plugin.terms.rebuildSoon();
+                }),
+            );
+          },
+        },
+        toggle("Also on the front of cards", "Off by default: a definition can give away the answer.", "hover.onFront"),
+        toggle("Also in notes (reading view)", "", "hover.inNotes"),
+        {
+          name: "Use my notes",
+          desc: "A note whose title or alias matches a term gives the definition (its first paragraph and pictures).",
+          render: (setting) => {
+            setting.addToggle((t) =>
+              t.setValue(s.hover.useNotes).onChange(async (v) => {
+                s.hover.useNotes = v;
+                await save();
+                this.plugin.terms.rebuildSoon();
+              }),
+            );
+          },
+        },
+        {
+          name: "My terms list",
+          desc: "Your own definitions and a never-underline list.",
+          render: (setting) => {
+            setting.setDesc(`Your own definitions and a never-underline list: ${s.stateFolder}/glossary/My terms.md`).addButton((b) => b.setButtonText("Open").onClick(() => void this.plugin.terms.openMyTerms()));
+          },
+        },
+        {
+          name: "MeSH dictionary",
+          desc: meshDesc,
+          render: (setting) => {
+            setting
+              .setDesc(`${meshDesc} ${this.plugin.terms.meshStatus()}`)
+              .addToggle((t) =>
+                t.setValue(s.hover.useMesh).onChange(async (v) => {
+                  s.hover.useMesh = v;
+                  await save();
+                  this.plugin.terms.rebuildSoon();
+                }),
+              )
+              .addButton((b) =>
+                b.setButtonText(this.plugin.terms.hasMesh() ? "Update" : "Download").onClick(async () => {
+                  b.setDisabled(true);
+                  await this.plugin.terms.downloadMesh();
+                  this.redraw();
+                }),
+              );
+          },
+        },
+      ],
+    };
+
+    const modelDesc = "The model's name exactly as your provider lists it. A small, inexpensive model is enough for definitions.";
+    const ai: Section = {
+      type: "group",
+      heading: "AI helpers",
+      items: [
+        {
+          name: "Optional",
+          desc:
+            "Uses your own API key from the provider you choose (billed by that provider), or a model running on your own computer. " +
+            "When on, card text is sent to that provider to find hard terms and write short definitions (cached in the vault, " +
+            "so each card is looked at once), to explain cards you keep missing, and to suggest splits for overstuffed cards.",
+        },
+        {
+          name: "Provider",
+          desc: "Each provider keeps its own key. “Other” works with any service that accepts OpenAI-style requests, including Ollama and LM Studio.",
+          render: (setting) => {
+            setting.addDropdown((d) => {
+              for (const [id, p] of Object.entries(AI_PROVIDERS)) d.addOption(id, p.label);
+              d.setValue(s.ai.provider).onChange(async (v) => {
+                s.ai.provider = v as AiProvider;
+                if (!s.ai.otherModel.trim()) s.ai.otherModel = AI_PROVIDERS[s.ai.provider].model ?? "";
+                await save();
+                if (s.ai.syncKey) await writeKeyFile(this.app, this.plugin.manifest.dir ?? "", getSecret(this.app, keyId()));
+                // The key, server and model rows all follow the provider.
+                this.redraw();
+              });
+            });
+          },
+        },
+        {
+          name: "Server address",
+          desc: "The base address of the service, e.g. http://localhost:11434/v1 for Ollama.",
+          visible: () => s.ai.provider === "custom",
+          render: (setting) => {
+            setting.addText((t) => {
+              t.setPlaceholder("https://…/v1").setValue(s.ai.baseUrl);
+              onChange(t.inputEl, async () => {
+                s.ai.baseUrl = t.getValue().trim();
+                await save();
+              });
+            });
+          },
+        },
+        {
+          name: "API key",
+          desc: "Stored on this device only, never in the vault, unless “Sync the key to my other devices” below is on.",
+          render: (setting) => {
+            setting.addText((t) => {
+              t.inputEl.type = "password";
+              const placeholder = () => (getSecret(this.app, keyId()) ? "•••••••• (saved)" : AI_PROVIDERS[s.ai.provider].keyHint);
+              t.setPlaceholder(placeholder());
+              t.inputEl.addEventListener("change", () => {
+                setSecret(this.app, keyId(), t.getValue().trim());
+                t.setValue("");
+                t.setPlaceholder(placeholder());
+                const key = getSecret(this.app, keyId());
+                if (s.ai.syncKey) void writeKeyFile(this.app, this.plugin.manifest.dir ?? "", key);
+                new Notice(key ? (s.ai.syncKey ? "API key saved, and synced to your other devices." : "API key saved on this device.") : "API key removed.");
+              });
+            });
+          },
+        },
+        {
+          name: "Sync the key to my other devices",
+          desc:
+            "Keeps a copy of the key in a file in this vault's plugin folder, so your phone or second computer picks it up without typing it. " +
+            "Anyone who gets a copy of the vault's hidden settings folder gets the key too, so leave this off for a vault you share. Turning it off deletes the file.",
+          render: (setting) => {
+            setting.addToggle((t) =>
+              t.setValue(s.ai.syncKey).onChange(async (v) => {
+                s.ai.syncKey = v;
+                await save();
+                await writeKeyFile(this.app, this.plugin.manifest.dir ?? "", v ? getSecret(this.app, keyId()) : "");
+                if (v && !getSecret(this.app, keyId())) new Notice("Enter the key on this device, or wait for it to arrive from another one.");
+              }),
+            );
+          },
+        },
+        toggle("Use AI", "", "ai.enabled"),
+        {
+          name: "Model",
+          desc: "Opus 5 is the most capable; Haiku 4.5 costs about a fifth as much.",
+          visible: () => s.ai.provider === "anthropic",
+          control: {
+            type: "dropdown",
+            key: "ai.model",
+            options: { "claude-opus-5": "Claude Opus 5", "claude-sonnet-5": "Claude Sonnet 5", "claude-haiku-4-5": "Claude Haiku 4.5" } satisfies Record<AiModel, string>,
+          },
+        },
+        {
+          name: "Model",
+          desc: modelDesc,
+          visible: () => s.ai.provider !== "anthropic",
+          render: (setting) => {
+            if (!s.ai.otherModel.trim()) setting.setDesc(`Needed before the AI helpers can run. ${modelDesc}`);
+            setting.addText((t) => {
+              t.setPlaceholder("Model name").setValue(s.ai.otherModel);
+              onChange(t.inputEl, async () => {
+                s.ai.otherModel = t.getValue().trim();
+                await save();
+              });
+            });
+          },
+        },
+        {
+          name: "Never send cards from these folders",
+          desc: "Comma-separated.",
+          render: (setting) => {
+            setting.addText((t) => {
+              t.setValue(s.ai.excludeFolders.join(", "));
+              onChange(t.inputEl, async () => {
+                s.ai.excludeFolders = folders(t.getValue());
+                await save();
+              });
+            });
+          },
+        },
+        toggle("Look at new cards automatically", "In small batches (up to 30 cards) while Obsidian is open. Larger runs always ask first.", "ai.autoRun"),
+        {
+          name: "Find hard terms now",
+          render: (setting) => {
+            setting.setDesc(this.plugin.ai.statusText()).addButton((b) => b.setButtonText("Run").onClick(() => void this.plugin.ai.runWithConfirm()));
+          },
+        },
+      ],
+    };
+
+    return [decks, cards, review, controller, keys, hover, ai, { name: "Installed version", desc: this.plugin.manifest.version, searchable: false }];
   }
 }
 

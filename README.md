@@ -118,6 +118,7 @@ Sync).
 
 - Tap the right third of the screen for Good and the left third for Again, or use the buttons.
 - Shake to undo.
+- After each answer a brief sign above the buttons shows which answer registered (a small word by default; a line, a dot, a bold label or nothing, in settings).
 - Tap a term for its definition, tap a figure to zoom, and open the card's note the same way.
 - Each device keeps its own review log, so studying on the phone and the computer never conflicts.
 - Osteon warns you if iCloud has offloaded your pictures from the phone.

@@ -4,6 +4,7 @@ import { DEFAULT_PRESET_ID, defaultPreset, newPresetId, presetIdFor, type Preset
 import { MIN_REVIEWS_TO_OPTIMIZE, optimize, sequencesFrom } from "../../core/optimizer";
 import { parseSteps } from "../../core/scheduler";
 import type FlashcardsPlugin from "../../main";
+import { destructive } from "../compat";
 
 export class DeckOptionsModal extends Modal {
   constructor(
@@ -162,9 +163,8 @@ export class DeckOptionsModal extends Modal {
             }),
           )
           .addButton((b) =>
-            b
+            destructive(b)
               .setButtonText("Delete preset")
-              .setWarning()
               .onClick(async () => {
                 delete s.presets[presetId];
                 for (const d of Object.keys(s.deckPresets)) if (s.deckPresets[d] === presetId) delete s.deckPresets[d];

@@ -365,6 +365,8 @@ export class FlashcardsSettingTab extends PluginSettingTab {
   private sample: HTMLElement | null = null;
   /** Before 1.13: the rows that come and go, so they can be shown and hidden in place. */
   private legacyRows: Array<{ el: HTMLElement; visible: () => boolean }> = [];
+  /** Drawn by hand into a window of its own (the Decks page's Settings button), not by Obsidian's settings. */
+  private inModal = false;
 
   constructor(
     app: App,
@@ -386,16 +388,34 @@ export class FlashcardsSettingTab extends PluginSettingTab {
     if (setSettingPath(this.plugin.settings, key, value)) await this.plugin.saveSettings();
   }
 
+  /** Obsidian 1.13+ draws the settings screen itself; a window of our own is always drawn by hand. */
+  private native(): boolean {
+    return !this.inModal && requireApiVersion("1.13.0");
+  }
+
+  /** Draw the whole tab by hand into `el` (the Decks page's settings window). */
+  drawInto(el: HTMLElement): void {
+    this.inModal = true;
+    this.containerEl = el;
+    this.drawLegacy();
+  }
+
   /** Draw every row again (for rows whose text depends on what was just changed). */
   private redraw(): void {
+    if (this.inModal) return this.drawLegacy();
     if (requireApiVersion("1.13.0")) this.update();
     else this.drawLegacy();
   }
 
   /** Show or hide the rows that depend on another setting (the background picture rows). */
   private refreshVisible(): void {
+    if (this.inModal) return this.toggleLegacyRows();
     if (requireApiVersion("1.13.0")) this.refreshDomState();
-    else for (const row of this.legacyRows) row.el.toggle(row.visible());
+    else this.toggleLegacyRows();
+  }
+
+  private toggleLegacyRows(): void {
+    for (const row of this.legacyRows) row.el.toggle(row.visible());
   }
 
   private drawSample(): void {
@@ -566,7 +586,7 @@ export class FlashcardsSettingTab extends PluginSettingTab {
         visible: picture,
         render: (setting) => {
           // Obsidian 1.13 shows the value beside the slider; before that it is written out here.
-          const shown = requireApiVersion("1.13.0") ? null : setting.controlEl.createSpan({ text: String(s.cardBackgroundDim) });
+          const shown = this.native() ? null : setting.controlEl.createSpan({ text: String(s.cardBackgroundDim) });
           setting.addSlider((sl) =>
             sl
               .setLimits(0, 0.9, 0.05)

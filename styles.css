@@ -469,3 +469,6 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   60% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* Osteon settings opened from the Decks page: room for the setting rows. */
+.fc-settings-modal { width: min(760px, 92vw); }

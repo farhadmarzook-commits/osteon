@@ -103,7 +103,7 @@ Open the deck list from the ribbon icon or **Osteon: Open decks**. Space shows t
 - \* mark, ⌘1–7 flags, \- bury, @ suspend, ⌘⇧D set due date
 - I card info, O deck options
 
-Every key can be changed in settings. Scheduling is [FSRS](https://github.com/open-spaced-repetition),
+Every key can be changed in settings, which also open from the **Settings** button on the deck list (or the deck gear menu), without going through Obsidian's settings. Scheduling is [FSRS](https://github.com/open-spaced-repetition),
 and a deck's parameters can be optimised from your own history.
 
 A game controller works too.

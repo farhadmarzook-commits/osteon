@@ -1,6 +1,7 @@
 /** Anki's deck list: New / Learn / Due per deck, collapsible sub-decks (spec 0003 §1.1). */
 import { ItemView, Menu, sanitizeHTMLToDom, Scope, setIcon, type WorkspaceLeaf } from "obsidian";
 import { renderWhenVisible } from "./lazy-render";
+import { SettingsModal } from "../modals/settings";
 import { keyString } from "../settings";
 import { counts } from "../../core/queue";
 import type FlashcardsPlugin from "../../main";
@@ -77,6 +78,12 @@ export class DeckView extends ItemView {
         .setTitle("Options")
         .setIcon("settings")
         .onClick(() => new DeckOptionsModal(this.app, this.plugin, path).open()),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle("Osteon settings")
+        .setIcon("sliders-horizontal")
+        .onClick(() => new SettingsModal(this.app, this.plugin).open()),
     );
     menu.addItem((i) =>
       i
@@ -316,6 +323,9 @@ export class DeckView extends ItemView {
     }
     const imp = buttons.createEl("button", { text: "Import deck" });
     imp.onclick = () => pickAndImportApkg(this.plugin);
+    const settings = buttons.createEl("button", { text: "Settings" });
+    settings.setAttr("aria-label", "All of Osteon's settings");
+    settings.onclick = () => new SettingsModal(this.app, this.plugin).open();
     if (hiddenCount) {
       const label = this.showHidden ? "Hide Hidden Decks" : `Show Hidden Decks (${hiddenCount})`;
       const toggle = buttons.createEl("button", { text: label, cls: this.showHidden ? "is-active" : "" });

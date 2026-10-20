@@ -1,6 +1,8 @@
 /** Anki's review screen (spec 0003 §1.2–§3). */
 import { heatmapData, renderHeatmap } from "../heatmap";
 import { Component, ItemView, MarkdownRenderer, MarkdownView, Menu, Notice, Platform, prepareFuzzySearch, Scope, setIcon, SuggestModal, TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { gallery, minDisplayWidth } from "../../core/zoom";
+import { ImageViewer, type ViewerPicture } from "../modals/image-viewer";
 import type { CardRef } from "../../core/collection";
 import { cardFaces } from "../../core/faces";
 import { RATINGS, type RatingName } from "../../core/log";
@@ -115,6 +117,19 @@ export class ReviewView extends ItemView {
       this.registerDomEvent(window, "devicemotion", (e) => this.onMotion(e));
       this.registerDomEvent(window, "resize", () => this.clearNavbar());
     }
+    // A picture on a card opens full screen with zoom. Capture phase, so the card's own tap
+    // (show the answer / tap zones) never sees the click.
+    this.registerDomEvent(
+      this.contentEl,
+      "click",
+      (e) => {
+        const img = (e.target as HTMLElement).closest?.("img");
+        if (!img || !this.openPicture(img)) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true },
+    );
     // Internal links on a card open the note in another tab instead of doing nothing.
     this.registerDomEvent(this.contentEl, "click", (e) => {
       const a = (e.target as HTMLElement).closest("a.internal-link");
@@ -534,7 +549,7 @@ export class ReviewView extends ItemView {
         trace("tap (back)");
         this.askMotionPermission();
         const t = e.target as HTMLElement;
-        if (t.closest("a, button, .fc-crown, .fc-term, [class*='fc-term'], .fc-io, input, textarea")) return;
+        if (t.closest("a, button, img, .fc-crown, .fc-term, [class*='fc-term'], .fc-io, input, textarea")) return;
         const r = card.getBoundingClientRect();
         const x = (e.clientX - r.left) / Math.max(1, r.width);
         if (x > 2 / 3) {
@@ -549,6 +564,7 @@ export class ReviewView extends ItemView {
     const renderedFor = this.current;
     void Promise.allSettled(this.pendingRenders).then(() => {
       if (this.current !== renderedFor || !card.isConnected) return;
+      this.sizePictures(card);
       const ctx: ReviewContext = { ref, state: item.state, side, el: card };
       timed("decorate", () => this.plugin.api.decorate(ctx));
       this.plugin.api.emit(side === "back" ? "answerShown" : "cardShown", ctx);
@@ -810,6 +826,36 @@ export class ReviewView extends ItemView {
       c.crowns[i].toggleClass("fc-crown-gone", anyHidden);
     });
     for (const l of c.later) l.toggleClass("fc-crown-later", !anyHidden);
+  }
+
+  /** Open a card picture in the viewer, with the card's other pictures one arrow away. */
+  private openPicture(img: HTMLImageElement): boolean {
+    const card = img.closest(".fc-card");
+    // Occlusion figures keep their own zoom (masks are drawn over the picture); linked pictures follow the link.
+    if (!card || img.closest(".fc-io, a")) return false;
+    const imgs = Array.from(card.querySelectorAll<HTMLImageElement>("img")).filter((x) => !x.closest(".fc-io, a") && x.currentSrc);
+    const srcs = gallery(imgs.map((x) => x.currentSrc || x.src));
+    const pictures: ViewerPicture[] = srcs.map((src) => ({ src, alt: imgs.find((x) => (x.currentSrc || x.src) === src)?.getAttribute("alt") }));
+    const start = Math.max(0, srcs.indexOf(img.currentSrc || img.src));
+    if (!pictures.length) return false;
+    new ImageViewer(this.app, pictures, start).open();
+    return true;
+  }
+
+  /** Small pictures (Anki thumbnails) are drawn at least 240 px wide, up to twice their own size. */
+  private sizePictures(card: HTMLElement): void {
+    for (const img of Array.from(card.querySelectorAll<HTMLImageElement>("img"))) {
+      if (img.closest(".fc-io")) continue;
+      img.addClass("fc-card-img");
+      const apply = () => {
+        const w = minDisplayWidth(img.naturalWidth);
+        if (w === undefined) return;
+        img.addClass("fc-img-small");
+        img.setCssProps({ "--fc-img-min": `${w}px` });
+      };
+      if (img.complete && img.naturalWidth) apply();
+      else img.addEventListener("load", apply, { once: true });
+    }
   }
 
   private md(markdown: string, el: HTMLElement): void {

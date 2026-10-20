@@ -472,3 +472,53 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
 
 /* Osteon settings opened from the Decks page: room for the setting rows. */
 .fc-settings-modal { width: min(760px, 92vw); }
+
+/* Picture viewer: a card's pictures full screen, zoom and pan (1.4.0) */
+.fc-card .fc-card-img { cursor: zoom-in; transition: box-shadow 120ms ease; border-radius: 4px; }
+@media (hover: hover) {
+  .fc-card .fc-card-img:hover { box-shadow: 0 0 0 2px var(--interactive-accent); }
+}
+.fc-card .fc-card-img.fc-img-small { min-width: var(--fc-img-min, 240px); }
+.modal-container.fc-lightbox-container .modal-bg { background-color: rgba(0, 0, 0, 0.92); opacity: 1; }
+.modal.fc-lightbox {
+  width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh;
+  padding: 0; border: 0; border-radius: 0; background: rgba(0, 0, 0, 0.94); box-shadow: none;
+  display: flex; flex-direction: column;
+}
+.modal.fc-lightbox .modal-content { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0; }
+.modal.fc-lightbox .modal-close-button {
+  top: calc(var(--safe-area-inset-top, 0px) + 12px); right: 16px; z-index: 3;
+  color: #fff; background: rgba(255, 255, 255, 0.12); border-radius: 50%; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+}
+.fc-lightbox-stage {
+  flex: 1; min-height: 0; position: relative; overflow: hidden;
+  touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none;
+}
+.fc-lightbox-stage.is-zoomed { cursor: grab; }
+.fc-lightbox-stage.is-zoomed:active { cursor: grabbing; }
+.fc-lightbox-img {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--fc-lb-w, auto); height: var(--fc-lb-h, auto);
+  max-width: none; max-height: none;
+  transform: translate(-50%, -50%) translate(var(--fc-lb-x, 0px), var(--fc-lb-y, 0px)) scale(var(--fc-lb-scale, 1));
+  transform-origin: center center;
+  background: #fff; border-radius: 2px;
+}
+.fc-lightbox-bar {
+  display: flex; align-items: center; justify-content: center; gap: 1em;
+  padding: 8px 16px calc(var(--safe-area-inset-bottom, 0px) + 10px);
+  color: rgba(255, 255, 255, 0.85); font-size: var(--font-ui-small); text-align: center;
+}
+.fc-lightbox-caption { max-width: 70ch; }
+.fc-lightbox-count { opacity: 0.7; white-space: nowrap; }
+.fc-lightbox-hidden { display: none; }
+.fc-lightbox-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
+  width: 44px; height: 44px; border-radius: 50%; border: 0;
+  background: rgba(255, 255, 255, 0.14); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.fc-lightbox-nav:hover { background: rgba(255, 255, 255, 0.26); }
+.fc-lightbox-prev { left: 14px; }
+.fc-lightbox-next { right: 14px; }

@@ -25,6 +25,7 @@ export class ImageViewer extends Modal {
   private pinch?: { dist: number; view: View; mid: { x: number; y: number } };
   private drag?: { x: number; y: number; view: View; moved: boolean; t: number };
   private lastTap = 0;
+  private closeBtn?: HTMLElement;
 
   constructor(
     app: App,
@@ -71,6 +72,14 @@ export class ImageViewer extends Modal {
     this.stage.addEventListener("pointerup", (e) => this.onUp(e));
     this.stage.addEventListener("pointercancel", (e) => this.onUp(e));
     window.addEventListener("resize", this.onResize);
+    // Obsidian's own close button (on the phone it can sit outside .modal, in the container): hide every one.
+    this.containerEl.querySelectorAll<HTMLElement>(".modal-close-button, .modal-header-button").forEach((x) => x.setCssStyles({ display: "none" }));
+    this.closeBtn = this.modalEl.createEl("button", { cls: "fc-lightbox-close", attr: { "aria-label": "Close (Esc)" } });
+    setIcon(this.closeBtn, "x");
+    this.closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.close();
+    });
     this.placeClose();
     this.show();
   }
@@ -86,20 +95,21 @@ export class ImageViewer extends Modal {
   };
 
   /**
-   * Keep the close button below the phone's status bar (clock, battery). Set inline so it wins over
-   * any theme or app rule, from the real safe-area inset measured with a probe (Obsidian's own
-   * --safe-area-inset-top read 0 on an iPhone), with a 47 px floor on phones.
+   * The viewer draws its own close button (Obsidian's is hidden): on his iPhone, Obsidian kept its
+   * button under the status bar whatever CSS or inline style was set. On mobile the button sits below
+   * the safe-area inset, measured with a probe, with a 47 px floor on phones.
    */
   private placeClose(): void {
-    if (!Platform.isMobile) return;
-    const btn = this.modalEl.querySelector<HTMLElement>(".modal-close-button");
-    if (!btn) return;
-    const probe = document.body.createDiv();
-    probe.setCssStyles({ position: "fixed", top: "0", left: "0", visibility: "hidden", paddingTop: "env(safe-area-inset-top, 0px)" });
-    const inset = parseFloat(getComputedStyle(probe).paddingTop) || 0;
-    probe.remove();
-    const top = Math.max(inset, Platform.isPhone ? 47 : 0) + 12;
-    btn.setCssStyles({ top: `${top}px`, right: "16px" });
+    if (!this.closeBtn) return;
+    let top = 12;
+    if (Platform.isMobile) {
+      const probe = document.body.createDiv();
+      probe.setCssStyles({ position: "fixed", top: "0", left: "0", visibility: "hidden", paddingTop: "env(safe-area-inset-top, 0px)" });
+      const inset = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+      probe.remove();
+      top = Math.max(inset, Platform.isPhone ? 47 : 0) + 12;
+    }
+    this.closeBtn.setCssStyles({ top: `${top}px` });
   }
 
   private navButton(icon: string, label: string, cls: string, dir: 1 | -1): void {

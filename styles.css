@@ -492,6 +492,14 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   color: #fff; background: rgba(255, 255, 255, 0.12); border-radius: 50%; width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
 }
+.modal.fc-lightbox .modal-close-button, .fc-lightbox-container .modal-close-button, .fc-lightbox-container .modal-header-button { display: none !important; }
+.fc-lightbox-close {
+  position: absolute; top: 12px; right: 16px; z-index: 5;
+  width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0;
+  background: rgba(255, 255, 255, 0.16); color: #fff; box-shadow: none;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.fc-lightbox-close:hover { background: rgba(255, 255, 255, 0.28); }
 .fc-lightbox-stage {
   flex: 1; min-height: 0; position: relative; overflow: hidden;
   touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none;

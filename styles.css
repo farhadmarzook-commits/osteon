@@ -479,15 +479,16 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   .fc-card .fc-card-img:hover { box-shadow: 0 0 0 2px var(--interactive-accent); }
 }
 .fc-card .fc-card-img.fc-img-small { min-width: var(--fc-img-min, 240px); }
-.modal-container.fc-lightbox-container .modal-bg { background-color: rgba(0, 0, 0, 0.92); opacity: 1; }
+.modal-container.fc-lightbox-container .modal-bg { background-color: rgba(0, 0, 0, 0.92); opacity: var(--fc-lb-fade, 1); }
 .modal.fc-lightbox {
   width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh;
-  padding: 0; border: 0; border-radius: 0; background: rgba(0, 0, 0, 0.94); box-shadow: none;
+  padding: 0; border: 0; border-radius: 0; background: rgba(0, 0, 0, calc(0.94 * var(--fc-lb-fade, 1))); box-shadow: none;
   display: flex; flex-direction: column;
 }
 .modal.fc-lightbox .modal-content { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0; }
 .modal.fc-lightbox .modal-close-button {
-  top: calc(var(--safe-area-inset-top, 0px) + 12px); right: 16px; z-index: 3;
+  /* below the phone's status bar (clock, battery): Obsidian's variable when set, else the browser's inset */
+  top: calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 12px); right: 16px; z-index: 3;
   color: #fff; background: rgba(255, 255, 255, 0.12); border-radius: 50%; width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
 }
@@ -496,6 +497,9 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none;
 }
 .fc-lightbox-stage.is-zoomed { cursor: grab; }
+.is-phone .modal.fc-lightbox .modal-close-button { top: calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px), 47px) + 12px); width: 40px; height: 40px; }
+.fc-lightbox-img { transition: transform 0.18s ease-out; }
+.fc-lightbox-stage.is-swiping .fc-lightbox-img, .fc-lightbox-stage.is-zoomed .fc-lightbox-img { transition: none; }
 .fc-lightbox-stage.is-zoomed:active { cursor: grabbing; }
 .fc-lightbox-img {
   position: absolute; left: 50%; top: 50%;
@@ -507,7 +511,7 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
 }
 .fc-lightbox-bar {
   display: flex; align-items: center; justify-content: center; gap: 1em;
-  padding: 8px 16px calc(var(--safe-area-inset-bottom, 0px) + 10px);
+  padding: 8px 16px calc(max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 10px);
   color: rgba(255, 255, 255, 0.85); font-size: var(--font-ui-small); text-align: center;
 }
 .fc-lightbox-caption { max-width: 70ch; }

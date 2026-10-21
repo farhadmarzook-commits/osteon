@@ -93,3 +93,20 @@ export function step(i: number, n: number, dir: 1 | -1): number {
   if (n <= 0) return 0;
   return (((i + dir) % n) + n) % n;
 }
+
+/**
+ * Swipe to close: a drag on the un-zoomed picture in any direction closes the viewer when it went
+ * far enough (a sixth of the shorter screen side, at least 80 px) or was a quick flick.
+ */
+export function isSwipeOut(dx: number, dy: number, ms: number, stage: Size): boolean {
+  const dist = Math.hypot(dx, dy);
+  const far = Math.max(80, Math.min(stage.w, stage.h) / 6);
+  if (dist >= far) return true;
+  return dist >= 30 && ms > 0 && dist / ms > 0.6;
+}
+
+/** Background opacity while the picture is being swiped away: fades to 0.35 by half a screen. */
+export function swipeFade(dx: number, dy: number, stage: Size): number {
+  const half = Math.max(1, Math.min(stage.w, stage.h) / 2);
+  return 1 - 0.65 * Math.min(1, Math.hypot(dx, dy) / half);
+}

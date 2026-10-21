@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captionFor, clampView, FIT, fitSize, gallery, minDisplayWidth, step, toggleZoom, zoomAt } from "../src/core/zoom";
+import { captionFor, clampView, FIT, fitSize, gallery, isSwipeOut, minDisplayWidth, step, swipeFade, toggleZoom, zoomAt } from "../src/core/zoom";
 
 const fitted = { w: 800, h: 600 };
 const stage = { w: 800, h: 600 };
@@ -56,5 +56,21 @@ describe("picture viewer maths", () => {
     expect(step(0, 3, -1)).toBe(2);
     expect(step(2, 3, 1)).toBe(0);
     expect(step(0, 0, 1)).toBe(0);
+  });
+  it("closes on a long enough swipe in any direction, or a quick flick", () => {
+    const stage = { w: 390, h: 800 };
+    expect(isSwipeOut(0, 90, 400, stage)).toBe(true);
+    expect(isSwipeOut(-90, 0, 400, stage)).toBe(true);
+    expect(isSwipeOut(60, -60, 400, stage)).toBe(true);
+    expect(isSwipeOut(0, 40, 400, stage)).toBe(false);
+    expect(isSwipeOut(0, 40, 50, stage)).toBe(true);
+    expect(isSwipeOut(0, 10, 5, stage)).toBe(false);
+  });
+
+  it("fades the background as the picture is swiped away", () => {
+    const stage = { w: 400, h: 800 };
+    expect(swipeFade(0, 0, stage)).toBe(1);
+    expect(swipeFade(0, 200, stage)).toBeCloseTo(0.35);
+    expect(swipeFade(0, 1000, stage)).toBeCloseTo(0.35);
   });
 });

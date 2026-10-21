@@ -1,5 +1,5 @@
 import { type App, Modal, setIcon } from "obsidian";
-import { captionFor, clampView, FIT, fitSize, type Size, step, toggleZoom, type View, zoomAt } from "../../core/zoom";
+import { captionFor, clampView, FIT, fitSize, isSwipeOut, type Size, step, swipeFade, toggleZoom, type View, zoomAt } from "../../core/zoom";
 
 export interface ViewerPicture {
   src: string;
@@ -9,7 +9,7 @@ export interface ViewerPicture {
 /**
  * A card's pictures, full screen: fit to the screen, zoom with the wheel, a trackpad pinch,
  * double-click, or a two-finger pinch / double-tap on the phone, drag to pan, arrows to step
- * through the card's other pictures. While it is open the review screen's keys are inactive
+ * through the card's other pictures, and swipe the un-zoomed picture away in any direction to close. While it is open the review screen's keys are inactive
  * (a modal has its own key scope), and Esc closes only the viewer.
  */
 export class ImageViewer extends Modal {
@@ -23,7 +23,7 @@ export class ImageViewer extends Modal {
   private fitted: Size = { w: 0, h: 0 };
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch?: { dist: number; view: View; mid: { x: number; y: number } };
-  private drag?: { x: number; y: number; view: View; moved: boolean };
+  private drag?: { x: number; y: number; view: View; moved: boolean; t: number };
   private lastTap = 0;
 
   constructor(
@@ -133,6 +133,15 @@ export class ImageViewer extends Modal {
     this.stage.toggleClass("is-zoomed", this.view.scale > 1.01);
   }
 
+  /** Move the un-zoomed picture with the finger and fade the background, for swipe to close. */
+  private swipeTo(dx: number, dy: number): void {
+    this.img.setCssProps({ "--fc-lb-x": `${dx}px`, "--fc-lb-y": `${dy}px`, "--fc-lb-scale": "1" });
+    const fade = swipeFade(dx, dy, this.stageSize());
+    this.modalEl.setCssProps({ "--fc-lb-fade": `${fade}` });
+    this.containerEl.setCssProps({ "--fc-lb-fade": `${fade}` });
+    this.stage.toggleClass("is-swiping", dx !== 0 || dy !== 0);
+  }
+
   /** A point on the stage, relative to its centre. */
   private point(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const r = this.stage.getBoundingClientRect();
@@ -162,7 +171,7 @@ export class ImageViewer extends Modal {
       this.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), view: this.view, mid: this.point({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }) };
       this.drag = undefined;
     } else if (this.pointers.size === 1) {
-      this.drag = { x: e.clientX, y: e.clientY, view: this.view, moved: false };
+      this.drag = { x: e.clientX, y: e.clientY, view: this.view, moved: false, t: Date.now() };
     }
   }
 
@@ -180,6 +189,7 @@ export class ImageViewer extends Modal {
       const dy = e.clientY - this.drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) this.drag.moved = true;
       if (this.drag.view.scale > 1.01) this.set({ ...this.drag.view, x: this.drag.view.x + dx, y: this.drag.view.y + dy });
+      else if (this.drag.moved) this.swipeTo(dx, dy);
     }
   }
 
@@ -190,6 +200,13 @@ export class ImageViewer extends Modal {
     if (this.pointers.size < 2) this.pinch = undefined;
     if (this.pointers.size > 0) return;
     this.drag = undefined;
+    if (!wasPinch && drag && drag.moved && drag.view.scale <= 1.01) {
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      if (e.type !== "pointercancel" && isSwipeOut(dx, dy, Date.now() - drag.t, this.stageSize())) this.close();
+      else this.swipeTo(0, 0);
+      return;
+    }
     if (wasPinch || !drag || drag.moved || e.type === "pointercancel") return;
     // A tap: on the phone two quick taps toggle zoom; a single tap outside the picture closes.
     const now = Date.now();

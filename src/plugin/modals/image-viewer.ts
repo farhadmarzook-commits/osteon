@@ -1,4 +1,4 @@
-import { type App, Modal, setIcon } from "obsidian";
+import { type App, Modal, Platform, setIcon } from "obsidian";
 import { captionFor, clampView, FIT, fitSize, isSwipeOut, type Size, step, swipeFade, toggleZoom, type View, zoomAt } from "../../core/zoom";
 
 export interface ViewerPicture {
@@ -71,6 +71,7 @@ export class ImageViewer extends Modal {
     this.stage.addEventListener("pointerup", (e) => this.onUp(e));
     this.stage.addEventListener("pointercancel", (e) => this.onUp(e));
     window.addEventListener("resize", this.onResize);
+    this.placeClose();
     this.show();
   }
 
@@ -79,7 +80,27 @@ export class ImageViewer extends Modal {
     this.contentEl.empty();
   }
 
-  private onResize = () => this.measure();
+  private onResize = () => {
+    this.placeClose();
+    this.measure();
+  };
+
+  /**
+   * Keep the close button below the phone's status bar (clock, battery). Set inline so it wins over
+   * any theme or app rule, from the real safe-area inset measured with a probe (Obsidian's own
+   * --safe-area-inset-top read 0 on an iPhone), with a 47 px floor on phones.
+   */
+  private placeClose(): void {
+    if (!Platform.isMobile) return;
+    const btn = this.modalEl.querySelector<HTMLElement>(".modal-close-button");
+    if (!btn) return;
+    const probe = document.body.createDiv();
+    probe.setCssStyles({ position: "fixed", top: "0", left: "0", visibility: "hidden", paddingTop: "env(safe-area-inset-top, 0px)" });
+    const inset = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+    probe.remove();
+    const top = Math.max(inset, Platform.isPhone ? 47 : 0) + 12;
+    btn.setCssStyles({ top: `${top}px`, right: "16px" });
+  }
 
   private navButton(icon: string, label: string, cls: string, dir: 1 | -1): void {
     const b = this.modalEl.createEl("button", { cls: `fc-lightbox-nav ${cls}`, attr: { "aria-label": label } });

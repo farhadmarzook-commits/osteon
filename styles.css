@@ -486,13 +486,8 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   display: flex; flex-direction: column;
 }
 .modal.fc-lightbox .modal-content { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0; }
-.modal.fc-lightbox .modal-close-button {
-  /* below the phone's status bar (clock, battery): Obsidian's variable when set, else the browser's inset */
-  top: calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 12px); right: 16px; z-index: 3;
-  color: #fff; background: rgba(255, 255, 255, 0.12); border-radius: 50%; width: 36px; height: 36px;
-  display: flex; align-items: center; justify-content: center;
-}
-.modal.fc-lightbox .modal-close-button, .fc-lightbox-container .modal-close-button, .fc-lightbox-container .modal-header-button { display: none !important; }
+/* Obsidian's own close button stays under the iPhone status bar; it is hidden (inline, by the viewer) and .fc-lightbox-close drawn instead */
+body .modal-container.fc-lightbox-container .modal-close-button, body .modal-container.fc-lightbox-container .modal-header-button { display: none; }
 .fc-lightbox-close {
   position: absolute; top: 12px; right: 16px; z-index: 5;
   width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0;
@@ -505,7 +500,6 @@ a.fc-deck-link.fc-filtered-name, h2.fc-filtered-name.fc-filtered-name { color: v
   touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none;
 }
 .fc-lightbox-stage.is-zoomed { cursor: grab; }
-.is-phone .modal.fc-lightbox .modal-close-button { top: calc(max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px), 47px) + 12px); width: 40px; height: 40px; }
 .fc-lightbox-img { transition: transform 0.18s ease-out; }
 .fc-lightbox-stage.is-swiping .fc-lightbox-img, .fc-lightbox-stage.is-zoomed .fc-lightbox-img { transition: none; }
 .fc-lightbox-stage.is-zoomed:active { cursor: grabbing; }
